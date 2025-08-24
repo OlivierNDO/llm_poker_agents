@@ -1,0 +1,4 @@
+nlpcloud
+numpy
+python-dotenv
+spyder
