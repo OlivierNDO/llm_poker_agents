@@ -57,11 +57,13 @@ These are optional steps – the agent may skip them if it deems them unnecessar
 - **Goal**: Get descriptive features re: current game state from engineered features, conditionally represent as text
 
 
+### 6. Bet Sizing
+- **Goal**: Logic to determine appropriate bet sizing based on whether it's a bluff, win odds, etc.
 
 
 
-
-
+### 7. Use Predictive Model
+- **Goal**: (for all agents or None), allow use of the predictive model
 
 
 

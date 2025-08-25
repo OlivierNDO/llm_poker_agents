@@ -495,12 +495,12 @@ class FeatureReporter:
         return feature_str_list
 
 
-
 class Player:
-    def __init__(self, name: str, chips: int, agent=None):
+    def __init__(self, name: str, chips: int, agent=None, logger = logger):
         self.name = name
         self.chips = chips
         self.agent = agent
+        self.logger = logger
         
         # Hand state
         self.hole_cards: Optional[Tuple[Card, Card]] = None
@@ -711,9 +711,8 @@ class Player:
         return "\n".join(lines)
     
     def get_llm_prompt_info(self, game_state: GameState, stats_tracker: Optional[StatsTracker] = None) -> str:
-        """Get hand information formatted for LLM prompts"""
+        """Get hand information formatted for LLM prompts (without hand features - those are requested separately)"""
         info = self.get_hand_info(game_state)
-        #hand_feat_list = self.get_hand_features()
         
         lines = []
         
@@ -732,13 +731,8 @@ class Player:
         else:
             lines.append("Community cards: None dealt yet")
             
-        # Descriptive features
-        feature_reporter = FeatureReporter(self.hole_cards, game_state)
-        hand_feat_list = feature_reporter.get_hand_features()
-        if hand_feat_list:
-            lines.extend(hand_feat_list)
-
-        
+        # NOTE: Hand features removed - these are now only added when specifically requested via need_hand_analysis
+            
         lines.append(f"Betting round: {info['betting_round_name']}")
         
         # Current betting situation
@@ -792,6 +786,15 @@ class Player:
                     lines.append(f"    {action['player']}: {action['action']}")
         
         return "\n".join(lines)
+
+    def get_hand_features(self, game_state: GameState) -> List[str]:
+        """Get descriptive hand features (separated from basic prompt info)"""
+        try:
+            feature_reporter = FeatureReporter(self.hole_cards, game_state)
+            return feature_reporter.get_hand_features()
+        except Exception as e:
+            self.logger.warning(f"Hand feature extraction failed for {self.name}: {e}")
+            return ["Hand feature analysis unavailable"]
     
     def get_simple_situation(self, game_state: GameState) -> str:
         """Get a very concise situation summary"""
@@ -829,17 +832,17 @@ class Player:
             self.is_all_in = True
         
         return actual_bet
-
-
+    
 
 class Hand:
     """Manages a complete poker hand from start to finish"""
     
-    def __init__(self, players: List['Player'], stats_tracker: Optional[StatsTracker] = None):
+    def __init__(self, players: List['Player'], stats_tracker: Optional[StatsTracker] = None, logger = logger):
         self.players = players
         self.deck = Deck()
         self.game_state = GameState(players)
         self.stats_tracker = stats_tracker
+        self.logger = logger
         
         # Hand progression state
         self.phase = "setup"  # setup -> hole_cards -> preflop -> flop -> flop_betting -> turn -> turn_betting -> river -> river_betting -> showdown -> complete
@@ -884,7 +887,7 @@ class Hand:
         """Play a complete hand (original method for convenience)"""
         while not self.is_complete:
             result = self.execute_next_step()
-            logger.info(result)
+            self.logger.info(result)
         
     def _setup_hand(self) -> str:
         """Reset everything for new hand"""
@@ -1189,10 +1192,11 @@ class TableManager:
     - Stops when <= 1 player has chips or max_hands is reached.
     """
 
-    def __init__(self, players: List[Player], config: Optional[TableConfig] = None, stats_tracker: Optional[StatsTracker] = None):
+    def __init__(self, players: List[Player], config: Optional[TableConfig] = None, stats_tracker: Optional[StatsTracker] = None, logger = logger):
         self.players: List[Player] = players
         self.config = config or TableConfig()
         self.stats_tracker = stats_tracker
+        self.logger = logger
         self.hand_no = 0
         # Start with dealer at seat 0
         self.dealer_index = 0
@@ -1214,17 +1218,18 @@ class TableManager:
             hand.game_state.dealer_position = self._dealer_pos_in_active(active_seating)
 
             # Deal hole cards first (uses your existing method)
-            logger.info(hand.execute_next_step())  # setup
-            logger.info(hand.execute_next_step())  # hole_cards
+            self.logger.info(hand.execute_next_step())  # setup
+            self.logger.info(hand.execute_next_step())  # hole_cards
 
             # Post SB/BB into the preflop betting round
             self._post_blinds(hand)
 
             # Progress hand to completion using your existing state machine
             while not hand.is_complete:
-                logger.info(hand.execute_next_step())
+                self.logger.info(hand.execute_next_step())
 
             # Hand finished
+            self.logger.info('\n\n\n\n\n\n--------------------------------\n\n\n\n\n\n')
             self.hand_no += 1
             self._advance_button()
 
@@ -1335,16 +1340,28 @@ class TableManager:
         return start_index
     
     
-    
+
+
 
 class LLMAgent:
     """
-    Minimal poker agent that queries an LLM for an action.
-    Expects JSON like:
+    Enhanced poker agent that uses a two-stage process:
+    1. Planning stage - decides what information to gather
+    2. Decision stage - makes the actual betting decision
+    
+    Expects planning JSON like:
+    {
+      "need_opponent_stats": true,
+      "need_hand_analysis": false,
+      "ready_to_decide": false,
+      "reasoning": ["opponent has been aggressive", "need to understand their patterns"]
+    }
+    
+    And decision JSON like:
     {
       "action": "raise",
       "amount": 12,
-      "reasons": ["short bullet", "..."]
+      "reasons": ["strong hand", "good position"]
     }
     """
 
@@ -1355,17 +1372,18 @@ class LLMAgent:
                      gpu=True,
                      lang='en'
                  ),
-                 verbose: bool | int = True):
+                 verbose: bool | int = True,
+                 logger = logger):
         self.name = name
         self.player_profile = player_profile or (
             'You are an AI poker agent playing Texas Hold\'em against other agents. '
-            'Make rational decisions based only on the provided info.'
+            'Make rational decisions based on available information. Use planning to gather '
+            'relevant data before making betting decisions.'
         )
         self.client = client
         self.verbose = bool(verbose)
+        self.logger = logger
 
-
-    
     def get_action(
         self,
         player: Player,
@@ -1373,12 +1391,286 @@ class LLMAgent:
         valid_actions: List[ActionType],
         stats_tracker: Optional[StatsTracker] = None
     ) -> Action:
-        # --- constraints we can compute for the prompt to reduce invalid amounts ---
+        """
+        Two-stage process: Planning → Information Gathering → Decision
+        """
+        # Stage 1: Planning
+        planning_decision = self._get_planning_decision(player, game_state, valid_actions)
+        
+        # Stage 2: Gather requested information
+        gathered_info = self._gather_information(planning_decision, player, game_state, stats_tracker)
+        
+        # Stage 3: Make final betting decision
+        return self._make_betting_decision(player, game_state, valid_actions, gathered_info)
+
+    def _get_planning_decision(
+        self,
+        player: Player,
+        game_state: GameState,
+        valid_actions: List[ActionType]
+    ) -> dict:
+        """
+        First stage: Ask the LLM what information it needs before deciding
+        """
+        # Get basic hand info without hand features or opponent stats
+        basic_info = self._get_basic_prompt_info(player, game_state)
+        
+        legal_str = ", ".join(a.value for a in valid_actions)
+        
+        planning_prompt = f"""PROFILE: {self.player_profile}
+
+TASK: Plan your poker decision. You have access to powerful analytical tools - use them strategically.
+
+SITUATION:
+{basic_info}
+
+LEGAL ACTIONS: [{legal_str}]
+
+AVAILABLE INFORMATION SOURCES:
+1. OPPONENT STATS: Detailed playing patterns (VPIP, aggression, fold rates) - Critical for reading opponents
+2. HAND ANALYSIS: Mathematical hand strength, probabilities, equity calculations - Essential for optimal play
+
+You must output exactly this JSON format:
+{{"need_opponent_stats": true, "need_hand_analysis": true, "ready_to_decide": false, "reasoning": ["why I need this info"]}}
+
+DECISION FRAMEWORK:
+- need_opponent_stats: Should be TRUE unless you have very recent reads on all opponents
+- need_hand_analysis: Should be TRUE unless you have nuts/trash and decision is obvious  
+- ready_to_decide: Only TRUE if you're confident without additional analysis
+- reasoning: Explain your information needs (1-3 short reasons)
+
+WHEN TO SKIP INFO GATHERING (rare cases):
+- You have absolute nuts (straight flush, etc.) and want to bet/raise
+- You have absolute trash and will fold regardless of opponent tendencies
+- You have extensive recent data on opponents AND simple decision
+
+EXAMPLES:
+{{"need_opponent_stats": true, "need_hand_analysis": true, "ready_to_decide": false, "reasoning": ["need opponent tendencies", "hand strength unclear"]}}
+{{"need_opponent_stats": true, "need_hand_analysis": false, "ready_to_decide": false, "reasoning": ["obvious strong hand but need opponent reads"]}}
+{{"need_opponent_stats": false, "need_hand_analysis": false, "ready_to_decide": true, "reasoning": ["have nuts will bet max"]}}
+
+Output JSON only:"""
+        
+        response = self.client.generation(
+            planning_prompt,
+            max_length=1500,
+            temperature=0.1,
+            top_p=0.8,
+            remove_input=True,
+        )
+        
+        raw_text = (response.get('generated_text') or '').strip()
+        
+        # Try to extract JSON from response
+        planning = self._parse_planning_json(raw_text)
+        
+        if self.verbose:
+            reasons = " | ".join(planning.get("reasoning", ["No reasoning provided"]))
+            self.logger.info(f"{self.name} Planning: opponent_stats={planning.get('need_opponent_stats', False)}, "
+                       f"hand_analysis={planning.get('need_hand_analysis', False)}, "
+                       f"ready={planning.get('ready_to_decide', True)} | {reasons}")
+        
+        return planning
+
+    def _parse_planning_json(self, raw_text: str) -> dict:
+        """Parse planning JSON with multiple fallback strategies"""
+        # Strategy 1: Direct JSON parse
+        try:
+            return json.loads(raw_text)
+        except:
+            pass
+        
+        # Strategy 2: Extract JSON from mixed text
+        import re
+        json_match = re.search(r'\{[^}]*\}', raw_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except:
+                pass
+        
+        # Strategy 3: Repair common JSON errors
+        try:
+            # Fix common issues
+            cleaned = raw_text.strip()
+            if not cleaned.startswith('{'):
+                # Find first {
+                start = cleaned.find('{')
+                if start != -1:
+                    cleaned = cleaned[start:]
+            if not cleaned.endswith('}'):
+                # Find last }
+                end = cleaned.rfind('}')
+                if end != -1:
+                    cleaned = cleaned[:end+1]
+            
+            # Try to fix unquoted keys/values
+            cleaned = re.sub(r'(\w+):', r'"\1":', cleaned)  # Quote unquoted keys
+            cleaned = re.sub(r':\s*([^",\[\]{}]+)(?=[,}])', r': "\1"', cleaned)  # Quote unquoted string values
+            
+            return json.loads(cleaned)
+        except:
+            pass
+        
+        # Strategy 4: Intelligent parsing of key-value pairs
+        try:
+            result = {
+                "need_opponent_stats": False,
+                "need_hand_analysis": False,
+                "ready_to_decide": True,
+                "reasoning": ["parsing fallback"]
+            }
+            
+            # Look for boolean patterns
+            if re.search(r'"?need_opponent_stats"?\s*:\s*true', raw_text, re.IGNORECASE):
+                result["need_opponent_stats"] = True
+            if re.search(r'"?need_hand_analysis"?\s*:\s*true', raw_text, re.IGNORECASE):
+                result["need_hand_analysis"] = True
+            if re.search(r'"?ready_to_decide"?\s*:\s*false', raw_text, re.IGNORECASE):
+                result["ready_to_decide"] = False
+            
+            # Extract reasoning if possible
+            reasoning_match = re.search(r'"?reasoning"?\s*:\s*\[(.*?)\]', raw_text, re.DOTALL)
+            if reasoning_match:
+                reasons_text = reasoning_match.group(1)
+                reasons = re.findall(r'"([^"]+)"', reasons_text)
+                if reasons:
+                    result["reasoning"] = reasons[:3]  # Limit to 3
+            
+            return result
+        except:
+            pass
+        
+        # Strategy 5: Complete fallback
+        if self.verbose:
+            self.logger.warning(f"All planning JSON parsing failed, raw output: {raw_text[:200]}...")
+        
+        return {
+            "need_opponent_stats": False,
+            "need_hand_analysis": False,
+            "ready_to_decide": True,
+            "reasoning": ["JSON parse failed, proceeding with basic info"]
+        }
+
+    def _gather_information(
+        self,
+        planning_decision: dict,
+        player: Player,
+        game_state: GameState,
+        stats_tracker: Optional[StatsTracker]
+    ) -> dict:
+        """
+        Gather the information requested in the planning stage
+        """
+        # Get basic info without hand features or opponent stats
+        gathered = {"basic_info": self._get_basic_prompt_info(player, game_state)}
+        
+        # Gather opponent stats if requested
+        if planning_decision.get("need_opponent_stats", False) and stats_tracker:
+            opponent_stats = stats_tracker.get_opponent_stats_summary(player.name)
+            gathered["opponent_stats"] = opponent_stats
+            if self.verbose:
+                self.logger.info(f"{self.name}: Gathered opponent stats: {len(opponent_stats.split(chr(10)))} opponent(s) analyzed")
+        
+        # Gather hand analysis if requested
+        if planning_decision.get("need_hand_analysis", False):
+            try:
+                feature_reporter = FeatureReporter(player.hole_cards, game_state)
+                hand_features = feature_reporter.get_hand_features()
+                gathered["hand_analysis"] = hand_features
+                if self.verbose:
+                    self.logger.info(f"{self.name}: Gathered hand analysis: {len(hand_features)} feature(s)")
+            except Exception as e:
+                if self.verbose:
+                    self.logger.warning(f"{self.name}: Hand analysis failed: {e}")
+                gathered["hand_analysis"] = ["Hand analysis unavailable"]
+        
+        return gathered
+
+    def _get_basic_prompt_info(self, player: Player, game_state: GameState) -> str:
+        """Get basic hand information without hand features or opponent stats"""
+        info = player.get_hand_info(game_state)
+        
+        lines = []
+        
+        # Basic situation
+        lines.append(f"You are {player.name}, an AI poker agent competing in a Texas Hold'em hand.")
+        lines.append("All opponents at the table are also AI agents who receive similar information.")
+        lines.append("Your objective is to maximize your total chip winnings over many hands, not just in a single hand.")
+        lines.append(f"Your hole cards: {info['my_hole_cards'][0]} {info['my_hole_cards'][1]}")
+        lines.append(f"Your chips: {info['my_chips']}")
+        lines.append(f"Current pot: {info['pot']}")
+        
+        # Board state
+        if info['board']:
+            board_str = " ".join(str(card) for card in info['board'])
+            lines.append(f"Community cards: {board_str}")
+        else:
+            lines.append("Community cards: None dealt yet")
+            
+        lines.append(f"Betting round: {info['betting_round_name']}")
+        
+        # Current betting situation
+        if info['amount_to_call'] > 0:
+            lines.append(f"You need to call {info['amount_to_call']} to stay in the hand")
+        else:
+            lines.append("No bet to call - you can check or bet")
+        
+        lines.append(f"Your current bet this round: {info['my_current_bet']}")
+        
+        # Opponents
+        lines.append(f"\nOpponents remaining: {info['opponents_remaining']}")
+        for player_info in info['active_players']:
+            if player_info['name'] != player.name:
+                status = " (ALL-IN)" if player_info['is_all_in'] else ""
+                lines.append(f"  {player_info['name']}: {player_info['chips']} chips, bet {player_info['current_bet']} this round{status}")
+        
+        # Action sequence this round
+        lines.append(f"\nActions this betting round:")
+        if info['actions_this_round']:
+            for action in info['actions_this_round']:
+                amt = action.get('amount') or 0
+                if amt > 0:
+                    lines.append(f"  {action['player']}: {action['action']} {amt}")
+                else:
+                    lines.append(f"  {action['player']}: {action['action']}")
+        else:
+            lines.append("  No actions yet this round")
+        
+        # Previous rounds (if any)
+        previous_rounds = [a for a in info['full_hand_history'] if a['round'] != info['betting_round_name']]
+        if previous_rounds:
+            lines.append(f"\nPrevious betting rounds:")
+            current_round = None
+            for action in previous_rounds:
+                if action['round'] != current_round:
+                    current_round = action['round']
+                    lines.append(f"  {current_round}:")
+                
+                amt = action.get('amount') or 0
+                if amt > 0:
+                    lines.append(f"    {action['player']}: {action['action']} {amt}")
+                else:
+                    lines.append(f"    {action['player']}: {action['action']}")
+        
+        return "\n".join(lines)
+
+    def _make_betting_decision(
+        self,
+        player: Player,
+        game_state: GameState,
+        valid_actions: List[ActionType],
+        gathered_info: dict
+    ) -> Action:
+        """
+        Final stage: Make the actual betting decision using gathered information
+        """
+        # Calculate constraints
         call_needed = max(0, game_state.current_bet - player.current_bet)
-        max_bet = player.chips  # for BET
-        max_raise = max(0, player.chips - call_needed)  # for RAISE after calling
-    
-        # If you can’t afford to bet/raise, remove those actions from the legal list we show
+        max_bet = player.chips
+        max_raise = max(0, player.chips - call_needed)
+        
+        # Filter valid actions based on chip constraints
         allowed_actions = []
         for a in valid_actions:
             if a == ActionType.BET and max_bet < 1:
@@ -1386,20 +1678,30 @@ class LLMAgent:
             if a == ActionType.RAISE and max_raise < 1:
                 continue
             allowed_actions.append(a)
-    
+        
         legal_str = ", ".join(a.value for a in allowed_actions)
-    
-        prompt_info = player.get_llm_prompt_info(game_state, stats_tracker)
-    
-        # --- hardened primary prompt (JSON-only, strict) ---
-        prompt = f"""
+        
+        # Compile all gathered information
+        info_sections = [gathered_info["basic_info"]]
+        
+        if "opponent_stats" in gathered_info:
+            info_sections.append(f"\nOPPONENT STATISTICS:\n{gathered_info['opponent_stats']}")
+        
+        if "hand_analysis" in gathered_info:
+            analysis_str = "\n".join(gathered_info["hand_analysis"])
+            info_sections.append(f"\nHAND ANALYSIS:\n{analysis_str}")
+        
+        combined_info = "\n".join(info_sections)
+        
+        # Decision prompt
+        decision_prompt = f"""
         PROFILE:
         {self.player_profile}
         
-        TASK: Produce a single JSON object describing the poker action.
+        TASK: Make your poker betting decision based on the gathered information.
         
-        INPUT:
-        {prompt_info}
+        COMPLETE SITUATION:
+        {combined_info}
         
         LEGAL ACTIONS: [{legal_str}]
         NUMERIC CONSTRAINTS:
@@ -1424,63 +1726,76 @@ class LLMAgent:
         
         OUTPUT:
         """
+        
         response = self.client.generation(
-            prompt,
-            max_length=1200,
+            decision_prompt,
+            max_length=1500,
             temperature=0.2,
             top_p=0.9,
             remove_input=True,
         )
+        
         raw_text = (response.get('generated_text') or '').strip()
-    
-        # Try to parse
+        
+        # Parse and validate decision (reuse existing logic)
         try:
             decision = json.loads(raw_text)
         except Exception:
-            # --- one-shot repair if the primary output wasn't perfect ---
-            repair_prompt = f"""
-            You will be given model output that SHOULD be a single JSON object with EXACTLY these keys:
-            {{
-              "action": "fold" | "check" | "call" | "bet" | "raise" | "all_in",
-              "amount": null | <integer>,
-              "reasons": [ "<brief bullet>", ... ]   // 1-5 strings, ≤12 words each
-            }}
-            
-            Legal actions: [{legal_str}]
-            Constraints:
-            - For "bet": 1 ≤ amount ≤ {max_bet}
-            - For "raise": 1 ≤ amount ≤ {max_raise}
-            - For "check", "call", "fold", "all_in": amount MUST be null.
-            
-            Your task: FIX the input so it becomes a VALID JSON object that obeys the schema and constraints.
-            Normalization rules:
-            - If action isn't one of the legal actions, map to the closest legal alternative (prefer "check" over "call"; prefer "fold" over illegal "raise"/"bet").
-            - If amount is present for a non-bet/raise action, set it to null.
-            - If amount is missing for bet/raise, set it to 1 (still within the allowed max).
-            - If amount is a string number, convert to integer.
-            - If reasons is a single string, wrap in a 1-element array; trim to 1-5 items.
-            
-            Return ONLY the fixed JSON object. No extra text.
-            
-            INPUT:
-            <<<
-            {raw_text}
-            >>>
-            """
-            repair_resp = self.client.generation(
-                repair_prompt,
-                max_length=1200,
-                temperature=0.0,
-                top_p=1.0,
-                remove_input=True,
-            )
-            raw_text = (repair_resp.get('generated_text') or '').strip()
-            decision = json.loads(raw_text)  # Let exceptions surface: you asked not to hide them.
-    
-        # --- structural/type validation ---
+            # Repair attempt (reuse existing repair logic)
+            decision = self._repair_decision_json(raw_text, legal_str, max_bet, max_raise)
+        
+        return self._validate_and_create_action(
+            decision, allowed_actions, call_needed, max_bet, max_raise, player
+        )
+
+    def _repair_decision_json(self, raw_text: str, legal_str: str, max_bet: int, max_raise: int) -> dict:
+        """Repair malformed decision JSON (reuse existing repair logic)"""
+        repair_prompt = f"""
+        You will be given model output that SHOULD be a single JSON object with EXACTLY these keys:
+        {{
+          "action": "fold" | "check" | "call" | "bet" | "raise" | "all_in",
+          "amount": null | <integer>,
+          "reasons": [ "<brief bullet>", ... ]   // 1-5 strings, ≤12 words each
+        }}
+        
+        Legal actions: [{legal_str}]
+        Constraints:
+        - For "bet": 1 ≤ amount ≤ {max_bet}
+        - For "raise": 1 ≤ amount ≤ {max_raise}
+        - For "check", "call", "fold", "all_in": amount MUST be null.
+        
+        Your task: FIX the input so it becomes a VALID JSON object that obeys the schema and constraints.
+        Return ONLY the fixed JSON object. No extra text.
+        
+        INPUT:
+        <<<
+        {raw_text}
+        >>>
+        """
+        
+        repair_resp = self.client.generation(
+            repair_prompt,
+            max_length=1500,
+            temperature=0.0,
+            top_p=1.0,
+            remove_input=True,
+        )
+        raw_text = (repair_resp.get('generated_text') or '').strip()
+        return json.loads(raw_text)
+
+    def _validate_and_create_action(
+        self,
+        decision: dict,
+        allowed_actions: List[ActionType],
+        call_needed: int,
+        max_bet: int,
+        max_raise: int,
+        player: Player
+    ) -> Action:
+        """Validate decision and create Action object (reuse existing validation logic)"""
         if not isinstance(decision, dict):
             raise TypeError('LLM JSON must be an object')
-    
+        
         action_str = decision.get('action')
         if not isinstance(action_str, str):
             raise ValueError('Missing or invalid "action"')
@@ -1513,21 +1828,20 @@ class LLMAgent:
             amt = amount_field
 
         elif atype == ActionType.CALL:
-            # Always enforce deterministic call size
             amt = call_needed
 
         else:
             if amount_field not in (None, 0):
                 raise ValueError(f'Non-bet/raise action must not include amount, got {amount_field}')
-    
+        
         reasons = decision.get('reasons', None)
         if reasons is not None:
             if not isinstance(reasons, list) or not all(isinstance(r, str) for r in reasons):
                 raise TypeError('"reasons" must be a list of strings')
             reasons = [r.strip() for r in reasons if r and isinstance(r, str)]
             reasons = reasons[:5]
-    
-        # ---- VERBOSE PRINT ----
+        
+        # Verbose output
         if self.verbose:
             if atype == ActionType.BET:
                 amount_phrase = f" bet {amt}"
@@ -1538,11 +1852,9 @@ class LLMAgent:
             else:
                 amount_phrase = ""
             reason_text = "; ".join(reasons) if reasons else "no reasons provided"
-            logger.info(f"Choosing to {atype.value}{amount_phrase} because {reason_text}")
-    
+            self.logger.info(f"{self.name}: Final decision: {atype.value}{amount_phrase} because {reason_text}")
+        
         return Action(atype, amt, reasons=reasons)
-    
-
 
     
 llama_405_client = nlpcloud.Client(
@@ -1559,15 +1871,28 @@ llama_70_client = nlpcloud.Client(
     gpu=True,
     lang='en'
 )
+
+dolphin_mixtral_client = nlpcloud.Client(
+    model='dolphin-mixtral-8x7b',
+    token=os.getenv('NLP_CLOUD_TOKEN'),
+    gpu=True,
+    lang='en'
+)
     
     
-llama_405 = Player(name='Big Llama (405B)', chips=100, agent=LLMAgent(client = llama_405_client))
-llama_70 = Player(name='Medium Llama (70B)', chips=100, agent=LLMAgent(client = llama_70_client)) 
+llama_405 = Player(name='Big Llama (405B)', chips=100, agent=LLMAgent(client = llama_405_client, name='Big Llama (405B)'))
+llama_70 = Player(name='Medium Llama (70B)', chips=100, agent=LLMAgent(client = llama_70_client, name='Medium Llama (70B)')) 
+dolphin_mixtral = Player(name='Dolphin Mixtral (47B)', chips=100, agent=LLMAgent(client = dolphin_mixtral_client, name='Dolphin Mixtral (47B)')) 
+
+
+
+
 
 # Make some players
 players = [
     llama_405,
-    llama_70
+    llama_70,
+    dolphin_mixtral
     
 ]
 
@@ -1577,7 +1902,7 @@ stats = StatsTracker()
 # Configure table
 #config = TableConfig(small_blind=1, big_blind=2, max_hands=300)
 
-config = TableConfig(small_blind=2, big_blind=3, max_hands=30)
+config = TableConfig(small_blind=1, big_blind=2, max_hands=350)
 
 # Create the table manager
 tm = TableManager(players, config, stats)
@@ -1755,17 +2080,4 @@ for p in players:
     print(f'{p.name}: {p.chips} chips')
     
 """
-
-
-
-
-
-
-
-
-
-
-
-
-
 

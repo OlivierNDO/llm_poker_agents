@@ -461,6 +461,251 @@ def extract_simple_board_texture(board_ranks: np.ndarray) -> float:
     return max(0.0, 1.0 - span / 12.0)  # 0 = very dry, 1 = very coordinated
 
 
+
+
+
+HAND_NAMES = (
+    'high_card',
+    'one_pair',
+    'two_pair',
+    'three_of_a_kind',
+    'straight',
+    'flush',
+    'full_house',
+    'four_of_a_kind',
+    'straight_flush',
+)
+
+def best_hand_name(category_code: int) -> str:
+    return HAND_NAMES[int(category_code)]
+
+@njit
+def evaluate_best_hand(hole_ranks: np.ndarray,
+                       board_ranks: np.ndarray,
+                       hole_suits: np.ndarray,
+                       board_suits: np.ndarray) -> tuple:
+    """
+    Returns (category_code, tiebreakers[5]) where category_code is:
+      0=high_card, 1=one_pair, 2=two_pair, 3=three_of_a_kind,
+      4=straight, 5=flush, 6=full_house, 7=four_of_a_kind, 8=straight_flush.
+    Tiebreakers are category-specific rank keys, descending.
+    """
+    all_ranks = np.zeros(15, np.int32)
+    for r in hole_ranks:
+        if r > 1:
+            all_ranks[r] += 1
+    for r in board_ranks:
+        if r > 1:
+            all_ranks[r] += 1
+
+    suit_counts = np.zeros(4, np.int32)
+    for i in range(hole_suits.shape[0]):
+        if hole_ranks[i] > 1 and hole_suits[i] >= 0:
+            suit_counts[hole_suits[i]] += 1
+    for i in range(board_suits.shape[0]):
+        if board_ranks[i] > 1 and board_suits[i] >= 0:
+            suit_counts[board_suits[i]] += 1
+
+    has_sf = 0
+    sf_high = 0
+    for suit in range(4):
+        if suit_counts[suit] >= 5:
+            suited = np.zeros(15, np.uint8)
+            for i in range(hole_suits.shape[0]):
+                if hole_suits[i] == suit and hole_ranks[i] > 1:
+                    suited[hole_ranks[i]] = 1
+                    if hole_ranks[i] == 14:
+                        suited[1] = 1
+            for i in range(board_suits.shape[0]):
+                if board_suits[i] == suit and board_ranks[i] > 1:
+                    suited[board_ranks[i]] = 1
+                    if board_ranks[i] == 14:
+                        suited[1] = 1
+            for low in range(1, 11):
+                if np.sum(suited[low:low+5]) == 5:
+                    has_sf = 1
+                    sf_high = 5 if low == 1 else low + 4
+                    break
+            if has_sf == 1:
+                break
+
+    if has_sf == 1:
+        return 8, np.array([sf_high, 0, 0, 0, 0], np.int32)
+
+    quads = 0
+    trips = 0
+    pairs = np.zeros(5, np.int32)
+    pc = 0
+    for rank in range(14, 1, -1):
+        c = all_ranks[rank]
+        if c == 4:
+            quads = rank
+        elif c == 3 and trips == 0:
+            trips = rank
+        elif c == 2:
+            if pc < 5:
+                pairs[pc] = rank
+                pc += 1
+
+    if quads > 0:
+        kicker = 0
+        for r in range(14, 1, -1):
+            if all_ranks[r] == 1:
+                kicker = r
+                break
+        return 7, np.array([quads, kicker, 0, 0, 0], np.int32)
+
+    has_flush = 0
+    flush_suit = -1
+    for suit in range(4):
+        if suit_counts[suit] >= 5:
+            has_flush = 1
+            flush_suit = suit
+            break
+
+    has_straight = 0
+    straight_high = 0
+    flags = np.zeros(15, np.uint8)
+    for r in range(14, 1, -1):
+        if all_ranks[r] > 0:
+            flags[r] = 1
+            if r == 14:
+                flags[1] = 1
+    for low in range(1, 11):
+        if np.sum(flags[low:low+5]) == 5:
+            has_straight = 1
+            straight_high = 5 if low == 1 else low + 4
+            break
+
+    if trips > 0 and pc > 0:
+        return 6, np.array([trips, pairs[0], 0, 0, 0], np.int32)
+
+    if has_flush == 1:
+        flush_cards = np.zeros(7, np.int32)
+        fc = 0
+        for i in range(hole_suits.shape[0]):
+            if hole_suits[i] == flush_suit and hole_ranks[i] > 1:
+                flush_cards[fc] = hole_ranks[i]
+                fc += 1
+        for i in range(board_suits.shape[0]):
+            if board_suits[i] == flush_suit and board_ranks[i] > 1:
+                flush_cards[fc] = board_ranks[i]
+                fc += 1
+        for i in range(fc - 1):
+            for j in range(i + 1, fc):
+                if flush_cards[j] > flush_cards[i]:
+                    tmp = flush_cards[i]
+                    flush_cards[i] = flush_cards[j]
+                    flush_cards[j] = tmp
+        while fc < 5:
+            flush_cards[fc] = 0
+            fc += 1
+        return 5, np.array([flush_cards[0], flush_cards[1], flush_cards[2], flush_cards[3], flush_cards[4]], np.int32)
+
+    if has_straight == 1:
+        return 4, np.array([straight_high, 0, 0, 0, 0], np.int32)
+
+    if trips > 0:
+        kick1 = 0
+        kick2 = 0
+        for r in range(14, 1, -1):
+            if all_ranks[r] == 1:
+                if kick1 == 0:
+                    kick1 = r
+                elif kick2 == 0:
+                    kick2 = r
+                    break
+        return 3, np.array([trips, kick1, kick2, 0, 0], np.int32)
+
+    if pc >= 2:
+        pair_hi = pairs[0]
+        pair_lo = pairs[1]
+        kicker = 0
+        for r in range(14, 1, -1):
+            if all_ranks[r] == 1:
+                kicker = r
+                break
+        return 2, np.array([pair_hi, pair_lo, kicker, 0, 0], np.int32)
+
+    if pc == 1:
+        pair_rank = pairs[0]
+        k1 = 0
+        k2 = 0
+        k3 = 0
+        for r in range(14, 1, -1):
+            if all_ranks[r] == 1:
+                if k1 == 0:
+                    k1 = r
+                elif k2 == 0:
+                    k2 = r
+                elif k3 == 0:
+                    k3 = r
+                    break
+        return 1, np.array([pair_rank, k1, k2, k3, 0], np.int32)
+
+    k1 = 0
+    k2 = 0
+    k3 = 0
+    k4 = 0
+    k5 = 0
+    kc = 0
+    for r in range(14, 1, -1):
+        if all_ranks[r] >= 1:
+            if kc == 0:
+                k1 = r
+            elif kc == 1:
+                k2 = r
+            elif kc == 2:
+                k3 = r
+            elif kc == 3:
+                k4 = r
+            elif kc == 4:
+                k5 = r
+                break
+            kc += 1
+    return 0, np.array([k1, k2, k3, k4, k5], np.int32)
+
+
+
+def best_hand_string(hole_ranks: np.ndarray,
+                     board_ranks: np.ndarray,
+                     hole_suits: np.ndarray,
+                     board_suits: np.ndarray) -> str:
+    """
+    Wrapper: evaluate the best hand and return a descriptive string.
+    """
+    code, tiebreakers = evaluate_best_hand(hole_ranks, board_ranks, hole_suits, board_suits)
+
+    rank_names = {
+        14: "Ace", 13: "King", 12: "Queen", 11: "Jack",
+        10: "Ten", 9: "Nine", 8: "Eight", 7: "Seven",
+        6: "Six", 5: "Five", 4: "Four", 3: "Three", 2: "Two"
+    }
+
+    if code == 0:   # high card
+        return f"High card {rank_names[tiebreakers[0]]}"
+    elif code == 1: # one pair
+        return f"Pair of {rank_names[tiebreakers[0]]}s"
+    elif code == 2: # two pair
+        return f"Two pair: {rank_names[tiebreakers[0]]}s and {rank_names[tiebreakers[1]]}s"
+    elif code == 3: # trips
+        return f"Three of a kind: {rank_names[tiebreakers[0]]}s"
+    elif code == 4: # straight
+        return f"Straight to the {rank_names[tiebreakers[0]]}"
+    elif code == 5: # flush
+        return f"Flush, high card {rank_names[tiebreakers[0]]}"
+    elif code == 6: # full house
+        return f"Full house: {rank_names[tiebreakers[0]]}s full of {rank_names[tiebreakers[1]]}s"
+    elif code == 7: # quads
+        return f"Four of a kind: {rank_names[tiebreakers[0]]}s"
+    elif code == 8: # straight flush
+        return f"Straight flush to the {rank_names[tiebreakers[0]]}"
+    else:
+        return "Unknown hand"
+
+
+
+
 @njit
 def extract_hand_strength_scalar(hole_ranks: np.ndarray, board_ranks: np.ndarray, 
                                 hole_suits: np.ndarray, board_suits: np.ndarray) -> float:
