@@ -11,21 +11,18 @@ import os
 import numpy as np
 import nlpcloud
 import warnings
+import requests
+import json
 
 from src.core import Card, Suit, HandEvaluator
 import src.feature_engineering as fe
 
 load_dotenv()
-
 api_token = os.getenv("NLP_CLOUD_TOKEN")
+open_router_api_token = os.getenv("OPEN_ROUTER_TOKEN")
 
-# Initialize one client for reuse
-_llm_client = nlpcloud.Client(
-    model="finetuned-llama-3-70b",
-    token=api_token,
-    gpu=True,
-    lang="en"
-)
+
+
 
 
 # --- Logging setup ---
@@ -41,18 +38,11 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler(log_filename, encoding="utf-8"),
         logging.StreamHandler()  # keep console output too
-    ]
+    ],
+    force = True
 )
 
-logger = logging.getLogger(__name__)
-
-
-
-
-
-
-
-
+logger = logging.getLogger()
 
 
 
@@ -1343,6 +1333,53 @@ class TableManager:
 
 
 
+class OpenRouterCompletionEngine:
+    """
+    
+    Example Usage
+    -------------
+    engine = OpenRouterCompletionEngine()
+    answer = engine.submit_prompt_return_response('The first person on the moon was')
+    print(answer)
+    
+    """
+    def __init__(
+        self,
+        model: str = 'openai/gpt-4o',
+        token: str = os.getenv("OPEN_ROUTER_TOKEN"),
+        url: str = 'https://openrouter.ai/api/v1/chat/completions'
+        ):
+        self.model = model
+        self.token = token
+        self.url = url
+
+    def submit_prompt(self, prompt: str, max_tokens: int | None = 40000, temperature: float = 0.7):
+        payload = {
+            'model': self.model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': temperature,
+        }
+        if max_tokens is not None:
+            payload['max_tokens'] = max_tokens
+    
+        response = requests.post(
+            self.url,
+            headers={'Authorization': f'Bearer {self.token}'},
+            json=payload,
+        )
+        return response.json()
+
+    
+    def submit_prompt_return_response(self, prompt: str):
+        output_data = self.submit_prompt(prompt)
+        output_string = output_data.get('choices')[0].get('message').get('content')
+        return output_string
+
+
+
+
+
+
 class LLMAgent:
     """
     Enhanced poker agent that uses a two-stage process:
@@ -1366,11 +1403,10 @@ class LLMAgent:
     """
 
     def __init__(self, name: str = 'LLMAgent', player_profile: Optional[str] = None,
-                 client = nlpcloud.Client(
-                     model='finetuned-llama-3-70b',
-                     token=os.getenv('NLP_CLOUD_TOKEN'),
-                     gpu=True,
-                     lang='en'
+                 client = OpenRouterCompletionEngine(
+                     model='openai/gpt-4o',
+                     token=os.getenv('OPEN_ROUTER_TOKEN'),
+                     url='https://openrouter.ai/api/v1/chat/completions'
                  ),
                  verbose: bool | int = True,
                  logger = logger):
@@ -1394,13 +1430,8 @@ class LLMAgent:
         """
         Two-stage process: Planning → Information Gathering → Decision
         """
-        # Stage 1: Planning
         planning_decision = self._get_planning_decision(player, game_state, valid_actions)
-        
-        # Stage 2: Gather requested information
         gathered_info = self._gather_information(planning_decision, player, game_state, stats_tracker)
-        
-        # Stage 3: Make final betting decision
         return self._make_betting_decision(player, game_state, valid_actions, gathered_info)
 
     def _get_planning_decision(
@@ -1412,9 +1443,7 @@ class LLMAgent:
         """
         First stage: Ask the LLM what information it needs before deciding
         """
-        # Get basic hand info without hand features or opponent stats
         basic_info = self._get_basic_prompt_info(player, game_state)
-        
         legal_str = ", ".join(a.value for a in valid_actions)
         
         planning_prompt = f"""PROFILE: {self.player_profile}
@@ -1451,17 +1480,8 @@ EXAMPLES:
 
 Output JSON only:"""
         
-        response = self.client.generation(
-            planning_prompt,
-            max_length=1500,
-            temperature=0.1,
-            top_p=0.8,
-            remove_input=True,
-        )
-        
-        raw_text = (response.get('generated_text') or '').strip()
-        
-        # Try to extract JSON from response
+        raw_text = self.client.submit_prompt_return_response(planning_prompt)
+        raw_text = (raw_text or '').strip()
         planning = self._parse_planning_json(raw_text)
         
         if self.verbose:
@@ -1473,14 +1493,10 @@ Output JSON only:"""
         return planning
 
     def _parse_planning_json(self, raw_text: str) -> dict:
-        """Parse planning JSON with multiple fallback strategies"""
-        # Strategy 1: Direct JSON parse
         try:
             return json.loads(raw_text)
         except:
             pass
-        
-        # Strategy 2: Extract JSON from mixed text
         import re
         json_match = re.search(r'\{[^}]*\}', raw_text, re.DOTALL)
         if json_match:
@@ -1488,31 +1504,21 @@ Output JSON only:"""
                 return json.loads(json_match.group())
             except:
                 pass
-        
-        # Strategy 3: Repair common JSON errors
         try:
-            # Fix common issues
             cleaned = raw_text.strip()
             if not cleaned.startswith('{'):
-                # Find first {
                 start = cleaned.find('{')
                 if start != -1:
                     cleaned = cleaned[start:]
             if not cleaned.endswith('}'):
-                # Find last }
                 end = cleaned.rfind('}')
                 if end != -1:
                     cleaned = cleaned[:end+1]
-            
-            # Try to fix unquoted keys/values
-            cleaned = re.sub(r'(\w+):', r'"\1":', cleaned)  # Quote unquoted keys
-            cleaned = re.sub(r':\s*([^",\[\]{}]+)(?=[,}])', r': "\1"', cleaned)  # Quote unquoted string values
-            
+            cleaned = re.sub(r'(\w+):', r'"\1":', cleaned)
+            cleaned = re.sub(r':\s*([^",\[\]{}]+)(?=[,}])', r': "\1"', cleaned)
             return json.loads(cleaned)
         except:
             pass
-        
-        # Strategy 4: Intelligent parsing of key-value pairs
         try:
             result = {
                 "need_opponent_stats": False,
@@ -1520,31 +1526,23 @@ Output JSON only:"""
                 "ready_to_decide": True,
                 "reasoning": ["parsing fallback"]
             }
-            
-            # Look for boolean patterns
             if re.search(r'"?need_opponent_stats"?\s*:\s*true', raw_text, re.IGNORECASE):
                 result["need_opponent_stats"] = True
             if re.search(r'"?need_hand_analysis"?\s*:\s*true', raw_text, re.IGNORECASE):
                 result["need_hand_analysis"] = True
             if re.search(r'"?ready_to_decide"?\s*:\s*false', raw_text, re.IGNORECASE):
                 result["ready_to_decide"] = False
-            
-            # Extract reasoning if possible
             reasoning_match = re.search(r'"?reasoning"?\s*:\s*\[(.*?)\]', raw_text, re.DOTALL)
             if reasoning_match:
                 reasons_text = reasoning_match.group(1)
                 reasons = re.findall(r'"([^"]+)"', reasons_text)
                 if reasons:
-                    result["reasoning"] = reasons[:3]  # Limit to 3
-            
+                    result["reasoning"] = reasons
             return result
         except:
             pass
-        
-        # Strategy 5: Complete fallback
         if self.verbose:
             self.logger.warning(f"All planning JSON parsing failed, raw output: {raw_text[:200]}...")
-        
         return {
             "need_opponent_stats": False,
             "need_hand_analysis": False,
@@ -1559,20 +1557,12 @@ Output JSON only:"""
         game_state: GameState,
         stats_tracker: Optional[StatsTracker]
     ) -> dict:
-        """
-        Gather the information requested in the planning stage
-        """
-        # Get basic info without hand features or opponent stats
         gathered = {"basic_info": self._get_basic_prompt_info(player, game_state)}
-        
-        # Gather opponent stats if requested
         if planning_decision.get("need_opponent_stats", False) and stats_tracker:
             opponent_stats = stats_tracker.get_opponent_stats_summary(player.name)
             gathered["opponent_stats"] = opponent_stats
             if self.verbose:
                 self.logger.info(f"{self.name}: Gathered opponent stats: {len(opponent_stats.split(chr(10)))} opponent(s) analyzed")
-        
-        # Gather hand analysis if requested
         if planning_decision.get("need_hand_analysis", False):
             try:
                 feature_reporter = FeatureReporter(player.hole_cards, game_state)
@@ -1584,48 +1574,33 @@ Output JSON only:"""
                 if self.verbose:
                     self.logger.warning(f"{self.name}: Hand analysis failed: {e}")
                 gathered["hand_analysis"] = ["Hand analysis unavailable"]
-        
         return gathered
 
     def _get_basic_prompt_info(self, player: Player, game_state: GameState) -> str:
-        """Get basic hand information without hand features or opponent stats"""
         info = player.get_hand_info(game_state)
-        
         lines = []
-        
-        # Basic situation
         lines.append(f"You are {player.name}, an AI poker agent competing in a Texas Hold'em hand.")
         lines.append("All opponents at the table are also AI agents who receive similar information.")
         lines.append("Your objective is to maximize your total chip winnings over many hands, not just in a single hand.")
         lines.append(f"Your hole cards: {info['my_hole_cards'][0]} {info['my_hole_cards'][1]}")
         lines.append(f"Your chips: {info['my_chips']}")
         lines.append(f"Current pot: {info['pot']}")
-        
-        # Board state
         if info['board']:
             board_str = " ".join(str(card) for card in info['board'])
             lines.append(f"Community cards: {board_str}")
         else:
             lines.append("Community cards: None dealt yet")
-            
         lines.append(f"Betting round: {info['betting_round_name']}")
-        
-        # Current betting situation
         if info['amount_to_call'] > 0:
             lines.append(f"You need to call {info['amount_to_call']} to stay in the hand")
         else:
             lines.append("No bet to call - you can check or bet")
-        
         lines.append(f"Your current bet this round: {info['my_current_bet']}")
-        
-        # Opponents
         lines.append(f"\nOpponents remaining: {info['opponents_remaining']}")
         for player_info in info['active_players']:
             if player_info['name'] != player.name:
                 status = " (ALL-IN)" if player_info['is_all_in'] else ""
                 lines.append(f"  {player_info['name']}: {player_info['chips']} chips, bet {player_info['current_bet']} this round{status}")
-        
-        # Action sequence this round
         lines.append(f"\nActions this betting round:")
         if info['actions_this_round']:
             for action in info['actions_this_round']:
@@ -1636,8 +1611,6 @@ Output JSON only:"""
                     lines.append(f"  {action['player']}: {action['action']}")
         else:
             lines.append("  No actions yet this round")
-        
-        # Previous rounds (if any)
         previous_rounds = [a for a in info['full_hand_history'] if a['round'] != info['betting_round_name']]
         if previous_rounds:
             lines.append(f"\nPrevious betting rounds:")
@@ -1646,15 +1619,78 @@ Output JSON only:"""
                 if action['round'] != current_round:
                     current_round = action['round']
                     lines.append(f"  {current_round}:")
-                
                 amt = action.get('amount') or 0
                 if amt > 0:
                     lines.append(f"    {action['player']}: {action['action']} {amt}")
                 else:
                     lines.append(f"    {action['player']}: {action['action']}")
-        
         return "\n".join(lines)
 
+    def _repair_decision_json(self, raw_text: str, legal_str: str, max_bet: int, max_raise: int) -> dict:
+        """Simple repair with logging and emergency fallback"""
+        if self.verbose:
+            self.logger.warning(f"{self.name}: Initial JSON parsing failed. Raw response: '{raw_text[:500]}...'")
+        
+        # Try the LLM repair
+        try:
+            repair_prompt = f"""
+            You will be given model output that SHOULD be a single JSON object with EXACTLY these keys:
+            {{
+              "action": "fold" | "check" | "call" | "bet" | "raise" | "all_in",
+              "amount": null | <integer>,
+              "reasons": [ "<brief bullet>", ... ]   // 1-5 strings, ≤12 words each
+            }}
+            
+            Legal actions: [{legal_str}]
+            Constraints:
+            - For "bet": 1 ≤ amount ≤ {max_bet}
+            - For "raise": 1 ≤ amount ≤ {max_raise}
+            - For "check", "call", "fold", "all_in": amount MUST be null.
+            
+            Your task: FIX the input so it becomes a VALID JSON object that obeys the schema and constraints.
+            Return ONLY the fixed JSON object. No extra text.
+            
+            INPUT:
+            <<<
+            {raw_text}
+            >>>
+            """
+            fixed = self.client.submit_prompt_return_response(repair_prompt)
+            fixed = (fixed or '').strip()
+            
+            if not fixed:
+                raise ValueError("Empty response from repair prompt")
+                
+            if self.verbose:
+                self.logger.info(f"{self.name}: Repair attempt returned: '{fixed[:200]}...'")
+            
+            return json.loads(fixed)
+        
+        except Exception as repair_error:
+            if self.verbose:
+                self.logger.error(f"{self.name}: Repair also failed: {repair_error}")
+            
+            # Ultimate fallback - return a safe default action
+            legal_actions = [ActionType(a.strip().lower()) for a in legal_str.split(',')]
+            if ActionType.FOLD in legal_actions:
+                default_action = "fold"
+            elif ActionType.CHECK in legal_actions:
+                default_action = "check"
+            elif ActionType.CALL in legal_actions:
+                default_action = "call"
+            else:
+                default_action = legal_actions[0].value
+                
+            if self.verbose:
+                self.logger.warning(f"{self.name}: Using emergency fallback action: {default_action}")
+                
+            return {
+                "action": default_action,
+                "amount": None,
+                "reasons": ["Emergency fallback due to parsing failure"]
+            }
+        
+        
     def _make_betting_decision(
         self,
         player: Player,
@@ -1662,15 +1698,10 @@ Output JSON only:"""
         valid_actions: List[ActionType],
         gathered_info: dict
     ) -> Action:
-        """
-        Final stage: Make the actual betting decision using gathered information
-        """
-        # Calculate constraints
+        """Make betting decision with improved prompt for consistent JSON output"""
         call_needed = max(0, game_state.current_bet - player.current_bet)
         max_bet = player.chips
         max_raise = max(0, player.chips - call_needed)
-        
-        # Filter valid actions based on chip constraints
         allowed_actions = []
         for a in valid_actions:
             if a == ActionType.BET and max_bet < 1:
@@ -1678,111 +1709,61 @@ Output JSON only:"""
             if a == ActionType.RAISE and max_raise < 1:
                 continue
             allowed_actions.append(a)
-        
         legal_str = ", ".join(a.value for a in allowed_actions)
-        
-        # Compile all gathered information
         info_sections = [gathered_info["basic_info"]]
-        
         if "opponent_stats" in gathered_info:
             info_sections.append(f"\nOPPONENT STATISTICS:\n{gathered_info['opponent_stats']}")
-        
         if "hand_analysis" in gathered_info:
             analysis_str = "\n".join(gathered_info["hand_analysis"])
             info_sections.append(f"\nHAND ANALYSIS:\n{analysis_str}")
-        
         combined_info = "\n".join(info_sections)
         
-        # Decision prompt
-        decision_prompt = f"""
-        PROFILE:
-        {self.player_profile}
+        decision_prompt = f"""{self.player_profile}
+    
+    You are making a poker decision. Your response must be a single JSON object with no additional text, explanations, or formatting.
+    
+    SITUATION:
+    {combined_info}
+    
+    LEGAL ACTIONS: {legal_str}
+    CONSTRAINTS:
+    - If action is "bet": amount must be 1-{max_bet}
+    - If action is "raise": amount must be 1-{max_raise}  
+    - If action is "check", "call", "fold", "all_in": amount must be null
+    
+    Your response must start with {{ and end with }} and contain only this JSON structure:
+    {{
+      "action": "ACTION_HERE",
+      "amount": AMOUNT_OR_NULL,
+      "reasons": ["reason1", "reason2"]
+    }}
+    
+    Do not include any other text. Do not use markdown formatting. Do not use code blocks. Do not add explanations before or after the JSON. Your entire response must be exactly the JSON object and nothing else.
+    
+    Start your response with the opening brace:"""
         
-        TASK: Make your poker betting decision based on the gathered information.
+        raw_text = self.client.submit_prompt_return_response(decision_prompt)
+        raw_text = (raw_text or '').strip()
         
-        COMPLETE SITUATION:
-        {combined_info}
+        if self.verbose:
+            self.logger.info(f"{self.name}: Raw decision response: '{raw_text[:200]}...'")
         
-        LEGAL ACTIONS: [{legal_str}]
-        NUMERIC CONSTRAINTS:
-        - call_needed = {call_needed}
-        - max_bet (if action == "bet") = {max_bet}
-        - max_raise (if action == "raise") = {max_raise}
-        
-        OUTPUT SCHEMA:
-        {{
-          "action": "fold" | "check" | "call" | "bet" | "raise" | "all_in",
-          "amount": null | <integer>,   // integer ≥ 1 only if action is "bet" or "raise"
-          "reasons": [ "<brief bullet>", "<brief bullet>", ... ]  // 1–5 items, each ≤ 12 words
-        }}
-        
-        RULES:
-        - Choose an action only from LEGAL ACTIONS.
-        - If action == "bet": 1 ≤ amount ≤ max_bet.
-        - If action == "raise": 1 ≤ amount ≤ max_raise.
-        - Reasons must be concise (1–5 items, ≤ 12 words each).
-        - Strict JSON only. No prose, no markdown, no comments.
-        - Start output with '{{' and end with '}}'.
-        
-        OUTPUT:
-        """
-        
-        response = self.client.generation(
-            decision_prompt,
-            max_length=1500,
-            temperature=0.2,
-            top_p=0.9,
-            remove_input=True,
-        )
-        
-        raw_text = (response.get('generated_text') or '').strip()
-        
-        # Parse and validate decision (reuse existing logic)
+        # Try parsing the response directly
         try:
             decision = json.loads(raw_text)
-        except Exception:
-            # Repair attempt (reuse existing repair logic)
+            if self.verbose:
+                self.logger.info(f"{self.name}: Successfully parsed JSON on first try")
+        except Exception as e:
+            if self.verbose:
+                self.logger.warning(f"{self.name}: Initial JSON parsing failed: {e}")
             decision = self._repair_decision_json(raw_text, legal_str, max_bet, max_raise)
         
         return self._validate_and_create_action(
             decision, allowed_actions, call_needed, max_bet, max_raise, player
         )
-
-    def _repair_decision_json(self, raw_text: str, legal_str: str, max_bet: int, max_raise: int) -> dict:
-        """Repair malformed decision JSON (reuse existing repair logic)"""
-        repair_prompt = f"""
-        You will be given model output that SHOULD be a single JSON object with EXACTLY these keys:
-        {{
-          "action": "fold" | "check" | "call" | "bet" | "raise" | "all_in",
-          "amount": null | <integer>,
-          "reasons": [ "<brief bullet>", ... ]   // 1-5 strings, ≤12 words each
-        }}
-        
-        Legal actions: [{legal_str}]
-        Constraints:
-        - For "bet": 1 ≤ amount ≤ {max_bet}
-        - For "raise": 1 ≤ amount ≤ {max_raise}
-        - For "check", "call", "fold", "all_in": amount MUST be null.
-        
-        Your task: FIX the input so it becomes a VALID JSON object that obeys the schema and constraints.
-        Return ONLY the fixed JSON object. No extra text.
-        
-        INPUT:
-        <<<
-        {raw_text}
-        >>>
-        """
-        
-        repair_resp = self.client.generation(
-            repair_prompt,
-            max_length=1500,
-            temperature=0.0,
-            top_p=1.0,
-            remove_input=True,
-        )
-        raw_text = (repair_resp.get('generated_text') or '').strip()
-        return json.loads(raw_text)
-
+    
+   
+    
     def _validate_and_create_action(
         self,
         decision: dict,
@@ -1792,25 +1773,19 @@ Output JSON only:"""
         max_raise: int,
         player: Player
     ) -> Action:
-        """Validate decision and create Action object (reuse existing validation logic)"""
         if not isinstance(decision, dict):
             raise TypeError('LLM JSON must be an object')
-        
         action_str = decision.get('action')
         if not isinstance(action_str, str):
             raise ValueError('Missing or invalid "action"')
-
         try:
             atype = ActionType(action_str.lower())
         except ValueError as e:
             raise ValueError(f'Unknown action "{action_str}"') from e
-
         if atype not in allowed_actions:
             raise ValueError(f'Illegal action for state: {atype.value} not in {[a.value for a in allowed_actions]}')
-
         amount_field = decision.get('amount', None)
         amt = 0
-
         if atype in (ActionType.BET, ActionType.RAISE):
             if amount_field is None:
                 raise ValueError('amount must be provided for bet/raise')
@@ -1818,30 +1793,22 @@ Output JSON only:"""
                 raise TypeError('amount must be an integer for bet/raise')
             if amount_field < 1:
                 raise ValueError('amount must be >= 1 for bet/raise')
-
             max_afford = max_bet if atype == ActionType.BET else max_raise
             if max_afford <= 0:
                 raise ValueError('Insufficient chips for requested bet/raise')
             if amount_field > max_afford:
                 raise ValueError(f'amount {amount_field} exceeds max affordable {max_afford}')
-
             amt = amount_field
-
         elif atype == ActionType.CALL:
             amt = call_needed
-
         else:
             if amount_field not in (None, 0):
                 raise ValueError(f'Non-bet/raise action must not include amount, got {amount_field}')
-        
         reasons = decision.get('reasons', None)
         if reasons is not None:
             if not isinstance(reasons, list) or not all(isinstance(r, str) for r in reasons):
                 raise TypeError('"reasons" must be a list of strings')
             reasons = [r.strip() for r in reasons if r and isinstance(r, str)]
-            reasons = reasons[:5]
-        
-        # Verbose output
         if self.verbose:
             if atype == ActionType.BET:
                 amount_phrase = f" bet {amt}"
@@ -1853,46 +1820,37 @@ Output JSON only:"""
                 amount_phrase = ""
             reason_text = "; ".join(reasons) if reasons else "no reasons provided"
             self.logger.info(f"{self.name}: Final decision: {atype.value}{amount_phrase} because {reason_text}")
-        
         return Action(atype, amt, reasons=reasons)
 
+
+
+
+
+
+
+
+
+
     
-llama_405_client = nlpcloud.Client(
-    model='llama-3-1-405b',
-    token=os.getenv('NLP_CLOUD_TOKEN'),
-    gpu=True,
-    lang='en'
-)
+open_ai_gpt_4o_client = OpenRouterCompletionEngine(model='openai/gpt-4o')
+anthropic_claud_sonnet_4_client = OpenRouterCompletionEngine(model='anthropic/claude-sonnet-4')
+google_gemini_flash_2_5_client = OpenRouterCompletionEngine(model='google/gemini-2.5-flash')
 
 
-llama_70_client = nlpcloud.Client(
-    model='finetuned-llama-3-70b',
-    token=os.getenv('NLP_CLOUD_TOKEN'),
-    gpu=True,
-    lang='en'
-)
-
-dolphin_mixtral_client = nlpcloud.Client(
-    model='dolphin-mixtral-8x7b',
-    token=os.getenv('NLP_CLOUD_TOKEN'),
-    gpu=True,
-    lang='en'
-)
-    
-    
-llama_405 = Player(name='Big Llama (405B)', chips=100, agent=LLMAgent(client = llama_405_client, name='Big Llama (405B)'))
-llama_70 = Player(name='Medium Llama (70B)', chips=100, agent=LLMAgent(client = llama_70_client, name='Medium Llama (70B)')) 
-dolphin_mixtral = Player(name='Dolphin Mixtral (47B)', chips=100, agent=LLMAgent(client = dolphin_mixtral_client, name='Dolphin Mixtral (47B)')) 
 
 
+
+player_open_ai_gpt_4o = Player(name='Open Ai Gpt-4o', chips=100, agent=LLMAgent(client = open_ai_gpt_4o_client, name='Open Ai Gpt-4o'))
+player_anthropic_claud_sonnet_4_client = Player(name='Claude Sonnet 4', chips=100, agent=LLMAgent(client = anthropic_claud_sonnet_4_client, name='Claude Sonnet 4'))
+player_google_gemini_flash_2_5 = Player(name='Gemini Flash 2.5', chips=100, agent=LLMAgent(client = google_gemini_flash_2_5_client, name='Gemini Flash 2.5'))
 
 
 
 # Make some players
 players = [
-    llama_405,
-    llama_70,
-    dolphin_mixtral
+    player_open_ai_gpt_4o,
+    player_anthropic_claud_sonnet_4_client,
+    player_google_gemini_flash_2_5
     
 ]
 
@@ -1902,7 +1860,7 @@ stats = StatsTracker()
 # Configure table
 #config = TableConfig(small_blind=1, big_blind=2, max_hands=300)
 
-config = TableConfig(small_blind=1, big_blind=2, max_hands=350)
+config = TableConfig(small_blind=2, big_blind=3, max_hands=200)
 
 # Create the table manager
 tm = TableManager(players, config, stats)
@@ -1913,11 +1871,8 @@ tm.play()
 # Afterward, check results
 for p in players:
     logger.info(f'{p.name}: {p.chips} chips')
-
-
-
-
-
+    
+    
 
     
 """    
