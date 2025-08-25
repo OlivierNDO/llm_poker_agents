@@ -1548,7 +1548,7 @@ players = [
 stats = StatsTracker()
 
 # Configure table
-config = TableConfig(small_blind=1, big_blind=2, max_hands=20)
+config = TableConfig(small_blind=1, big_blind=2, max_hands=200)
 
 # Create the table manager
 tm = TableManager(players, config, stats)
