@@ -32,10 +32,70 @@ x2 = encode_game_state_from_strings(
 x2.shape
 
 """
-from typing import List
-
+from typing import List, Sequence
+from collections import Counter
 from numba import njit
 import numpy as np
+
+
+
+
+def best_board_pattern(board_ranks: Sequence[int], board_suits: Sequence[str]) -> str:
+    """
+    Return the single strongest made-hand pattern visible on the board itself.
+    Always reports only the best category (no overlapping labels).
+    Works for 3–5 community cards.
+    """
+    n = len(board_ranks)
+    rank_counts = Counter(board_ranks)
+    suit_counts = Counter(board_suits)
+
+    # --- check flush potential ---
+    flush_suit = None
+    if any(count >= 5 for count in suit_counts.values()):
+        flush_suit = max(suit_counts, key=suit_counts.get)
+
+    # --- straight detection helper ---
+    def has_straight(ranks):
+        uniq = sorted(set(ranks))
+        if len(uniq) < 5:
+            return False
+        # wheel
+        if set([14, 2, 3, 4, 5]).issubset(uniq):
+            return True
+        for i in range(len(uniq) - 4):
+            if uniq[i+4] - uniq[i] == 4:
+                return True
+        return False
+
+    # --- check straight/straight flush ---
+    straight_on_board = has_straight(board_ranks)
+    straight_flush_on_board = False
+    if flush_suit and n >= 5:
+        suited = [r for r, s in zip(board_ranks, board_suits) if s == flush_suit]
+        if has_straight(suited):
+            straight_flush_on_board = True
+
+    # --- now check in proper ranking order ---
+    if straight_flush_on_board:
+        return "straight flush"
+    if 4 in rank_counts.values():
+        return "quads"
+    if 3 in rank_counts.values() and 2 in rank_counts.values():
+        return "full house"
+    if flush_suit:
+        return "flush"
+    if straight_on_board:
+        return "straight"
+    if 3 in rank_counts.values():
+        return "trips"
+    if list(rank_counts.values()).count(2) >= 1:
+        return "pair"
+    return None
+
+
+
+
 
 @njit
 def extract_flush_features(hole_suits: np.ndarray, board_suits: np.ndarray) -> np.ndarray:
