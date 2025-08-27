@@ -13,9 +13,7 @@ from src.agent_utils import FeatureReporter
 from src.poker_types import ActionType, Action, ActionRecord
 from src.core_poker_mechanics import Card, Suit, HandEvaluator
 
-from .logging_config import get_logger
-logger = get_logger(__name__)
-
+from src.logging_config import logger
 
 class ActionType(Enum):
     FOLD = "fold"

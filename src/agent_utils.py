@@ -5,6 +5,7 @@ agent_utils.py
 Utilities that agents call
 """
 import os
+from dotenv import load_dotenv
 import numpy as np
 import requests
 from typing import List, TYPE_CHECKING
@@ -12,11 +13,11 @@ from typing import List, TYPE_CHECKING
 from src.core_poker_mechanics import Card
 from src.poker_types import ActionType
 import src.feature_engineering as fe
-
+from src.logging_config import logger
 if TYPE_CHECKING:
     from src.game import GameState, Player, TableConfig
 
-
+load_dotenv()
 
 class BetSizingAnalyzer:
     """
@@ -342,6 +343,7 @@ class FeatureReporter:
 
 
 
+
 class OpenRouterCompletionEngine:
     """
     
@@ -371,23 +373,61 @@ class OpenRouterCompletionEngine:
         if max_tokens is not None:
             payload['max_tokens'] = max_tokens
     
-        response = requests.post(
-            self.url,
-            headers={'Authorization': f'Bearer {self.token}'},
-            json=payload,
-        )
-        return response.json()
+        try:
+            response = requests.post(
+                self.url,
+                headers={'Authorization': f'Bearer {self.token}'},
+                json=payload,
+                timeout=30  # Add timeout
+            )
+            
+            # Check if request was successful
+            if response.status_code != 200:
+                logger.error(f"OpenRouter API error: Status {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                return None
+                
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"OpenRouter API request failed: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error calling OpenRouter API: {e}")
+            return None
 
     
     def submit_prompt_return_response(self, prompt: str):
         output_data = self.submit_prompt(prompt)
-        output_string = output_data.get('choices')[0].get('message').get('content')
-        return output_string
-
-
-
-
-
+        
+        # Handle API failure
+        if output_data is None:
+            print("OpenRouter API call failed, returning fallback response")
+            return "fold"  # Safe fallback action
+            
+        # Handle malformed response
+        try:
+            choices = output_data.get('choices')
+            if not choices or len(choices) == 0:
+                print(f"No choices in OpenRouter response: {output_data}")
+                return "fold"
+                
+            message = choices[0].get('message')
+            if not message:
+                print(f"No message in OpenRouter choice: {choices[0]}")
+                return "fold"
+                
+            content = message.get('content')
+            if content is None:
+                print(f"No content in OpenRouter message: {message}")
+                return "fold"
+                
+            return content
+            
+        except Exception as e:
+            print(f"Error parsing OpenRouter response: {e}")
+            print(f"Response was: {output_data}")
+            return "fold"
 
 
 

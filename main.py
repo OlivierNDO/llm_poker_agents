@@ -1,21 +1,18 @@
 # main.py
-
-from src.logging_config import get_logger
-from src.game import TableConfig, Player, StatsTracker, Hand  # game state & runtime
+import time
+from src.logging_config import logger
+from src.game import TableConfig, Player, StatsTracker, TableManager  # game state & runtime
 from src.agents import LLMAgent                           # agents
 from src.agent_utils import OpenRouterCompletionEngine    # LLM client adapter
 
-# =============================================================================
-# LOGGING
-# =============================================================================
-logger = get_logger(__name__)
+
 
 # =============================================================================
 # POKER GAME SETUP
 # =============================================================================
 _log_prompts = False
 _n_chips = 250
-config = TableConfig(small_blind=1, big_blind=2, max_hands=5)
+config = TableConfig(small_blind=1, big_blind=2, max_hands=1)
 stats = StatsTracker()
 
 # =============================================================================
@@ -87,7 +84,6 @@ player_llama_3_3_70B = Player(
 # Active players for this session
 players = [
     player_open_ai_gpt_4o,
-    # player_claude_sonnet_4,   # toggle if you want Claude included
     player_gemini_flash_2_5,
     player_llama_3_3_70B
 ]
@@ -96,15 +92,12 @@ players = [
 # GAME LOOP
 # =============================================================================
 def main():
-    hand = Hand(players, stats_tracker=stats, logger=logger)
-
-    # Play until a stop condition (one bust or max_hands)
-    for _ in range(config.max_hands):
-        if sum(p.chips > 0 for p in players) <= 1:
-            break
-        hand.play()
-        hand = Hand(players, stats_tracker=stats, logger=logger)  # new hand
-
+    # Create the table manager
+    tm = TableManager(players, config, stats)
+    
+    # Run hands until stop condition (bust-out or max_hands)
+    tm.play()
+    
     # Final results
     logger.info("=== FINAL RESULTS ===")
     for p in players:

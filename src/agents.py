@@ -22,8 +22,7 @@ import src.feature_engineering as fe
 
 from src.game import Action, ActionType, GameState, Player, TableConfig, StatsTracker
 
-from .logging_config import get_logger
-logger = get_logger(__name__)
+from src.logging_config import logger
 
 
 
@@ -180,6 +179,7 @@ Output JSON only:"""
             self.logger.info(planning_prompt)
         raw_text = self.client.submit_prompt_return_response(planning_prompt)
         raw_text = (raw_text or '').strip()
+        raw_text = raw_text.replace("```json", "").replace("```", "")
         planning = self._parse_planning_json(raw_text)
         
         if self.verbose:
@@ -469,6 +469,8 @@ Output JSON only:"""
     
         raw = self.client.submit_prompt_return_response(prompt)
         raw = (raw or '').strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        
     
         try:
             parsed = json.loads(raw)
@@ -691,6 +693,7 @@ Output JSON only:"""
         
         raw_text = self.client.submit_prompt_return_response(action_type_prompt)
         raw_text = (raw_text or '').strip()
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         # Use similar parsing strategy as original with repair fallback
         try:
@@ -829,6 +832,7 @@ Output JSON only:"""
                 
             raw_response = self.client.submit_prompt_return_response(sizing_prompt)
             raw_response = (raw_response or '').strip()
+            raw_response = raw_response.replace("```json", "").replace("```", "").strip()
             
             # Parse sizing response with error handling
             try:
