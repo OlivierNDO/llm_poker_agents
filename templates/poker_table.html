@@ -113,6 +113,9 @@
             padding: 20px;
             transition: all 0.3s ease;
             position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
 
         .player-card.active {
@@ -129,6 +132,8 @@
         .player-card.thinking {
             animation: pulse 2s infinite;
         }
+        
+
 
         .player-header {
             display: flex;
@@ -137,7 +142,9 @@
             margin-bottom: 15px;
             flex-wrap: wrap;
             gap: 10px;
+            position: relative;
         }
+        
 
         .player-name {
             font-weight: bold;
@@ -161,21 +168,85 @@
         .chip-count {
             background: rgba(144, 238, 144, 0.2);
             color: #90EE90;
-            padding: 8px 15px;
             border-radius: 8px;
             font-weight: bold;
             font-size: 16px;
             border: 2px solid #90EE90;
+            text-align: center;
+        
+            width: var(--chip-count-width, 80px);  /* fallback if JS not run */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .current-bet {
-            background: rgba(255, 165, 0, 0.2);
-            color: #FFA500;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            border: 1px solid #FFA500;
+
+        /* Chip bars */
+        .chip-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(144, 238, 144, 0.15);
+            border: 1px solid rgba(144, 238, 144, 0.4);
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 8px;
         }
+        .chip-bar__fill {
+            height: 100%;
+            width: 0%;
+            background: #90EE90;
+            transition: width 300ms ease;
+        }
+        
+        .player-chip-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background: rgba(144, 238, 144, 0.15);
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
+        }
+        
+        .player-chip-bar__fill {
+            height: 100%;
+            width: 0%;
+            background: #90EE90;
+            transition: width 0.3s ease;
+        }
+
+        
+                
+        
+        /* Pot bar in header */
+        .pot-bar {
+            width: 420px;
+            max-width: 90vw;
+            height: 10px;
+            background: rgba(255, 215, 0, 0.12);
+            border: 1px solid rgba(255, 215, 0, 0.5);
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 8px auto 0;
+        }
+        .pot-bar__fill {
+            height: 100%;
+            width: 0%;
+            background: #FFD700;
+            transition: width 300ms ease;
+        }
+        
+        /* Optional: subtle change flash for numbers */
+        .flash-change {
+            animation: flash 450ms ease;
+        }
+        @keyframes flash {
+            0% { background: rgba(255,255,255,0.18); }
+            100% { background: transparent; }
+        }
+
+
 
         .player-cards {
             display: flex;
@@ -190,45 +261,68 @@
             padding: 10px;
             border-radius: 8px;
             margin-bottom: 15px;
-            min-height: 40px;
+            height: 44px;                  /* fixed height */
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             border: 1px solid #FFA500;
+            overflow: hidden;              /* prevent text from pushing the box bigger */
+            text-overflow: ellipsis;       /* show … if text is too long */
+            white-space: nowrap;           /* keep text on one line */
         }
 
         .player-reasoning {
-            background: rgba(173, 216, 230, 0.1);
-            color: #ADD8E6;
-            padding: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            color: #ffffff;
+            padding: 16px;
             border-radius: 8px;
-            font-size: 13px;
-            line-height: 1.4;
-            max-height: 100px;
-            overflow-y: auto;
-            border: 1px solid #ADD8E6;
+            font-size: 16px;
+            line-height: 1.5;      /* ~24px per line */
+            height: 174px;         /* fixed height (6 lines) */
+            overflow: hidden;      /* no scrollbar */
+            border: 1px solid rgba(255, 255, 255, 0.2);
             word-wrap: break-word;
+            margin-top: 12px;
+        
+            display: -webkit-box;
+            -webkit-line-clamp: 6; /* truncate after 6 lines */
+            -webkit-box-orient: vertical;
         }
 
+
         .card {
-            width: 50px;
-            height: 70px;
+            width: 65px;
+            height: 90px;
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 18px;
             color: black;
-            border: 1px solid #ccc;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+            border: 2px solid #ddd;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            padding: 6px 4px;
+            position: relative;
+        }
+
+        .card .rank {
+            font-size: 20px;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .card .suit {
+            font-size: 22px;
+            line-height: 1;
+            margin-top: -4px;
         }
 
         .card.red {
-            color: #dc143c;
+            color: #d32f2f;
         }
 
         .card.back {
@@ -239,9 +333,16 @@
         }
 
         .board-card {
-            width: 70px;
-            height: 98px;
-            font-size: 18px;
+            width: 85px;
+            height: 115px;
+        }
+
+        .board-card .rank {
+            font-size: 24px;
+        }
+
+        .board-card .suit {
+            font-size: 26px;
         }
 
         .controls {
@@ -345,12 +446,14 @@
         <div class="game-header">
             <div class="phase" id="gamePhase">Ready to Start</div>
             <div class="current-player" id="currentPlayer">Click "Start New Hand" to begin</div>
-            <div class="loading" id="loadingMessage" style="display: none;">Processing...</div>
             <div class="error" id="errorMessage" style="display: none;"></div>
             
             <div class="pot-info">
                 <div class="pot-amount">Pot: $<span id="potAmount">0</span></div>
                 <div class="current-bet-display">Current Bet: $<span id="currentBet">0</span></div>
+            </div>
+            <div class="pot-bar">
+                <div class="pot-bar__fill" id="potBarFill"></div>
             </div>
         </div>
 
@@ -384,6 +487,7 @@
     <script>
         let gameState = null;
         let actionLog = [];
+        let isProcessing = false;
 
         function createCard(cardStr, isBoard = false) {
             const card = document.createElement('div');
@@ -415,30 +519,25 @@
             };
             
             card.innerHTML = `
-                <div>${rank}</div>
-                <div>${suitSymbols[suit] || suit}</div>
+                <div class="rank">${rank}</div>
+                <div class="suit">${suitSymbols[suit] || suit}</div>
             `;
             
             return card;
         }
+        
+
 
         function createPlayerCard(player, index, isDealer = false) {
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
             playerCard.id = `player-${index}`;
-
-            // Apply status classes
-            if (!player.active) {
-                playerCard.classList.add('folded');
-            } else if (player.isCurrentPlayer) {
-                playerCard.classList.add('active', 'thinking');
-            }
-
-            // Create dealer indicator if needed
-            const dealerIndicator = isDealer ? 
-                '<div class="dealer-indicator">D</div>' : '';
-
-            // Create cards HTML
+        
+            if (!player.active) playerCard.classList.add('folded');
+            else if (player.isCurrentPlayer) playerCard.classList.add('active', 'thinking');
+        
+            const dealerIndicator = isDealer ? '<div class="dealer-indicator">D</div>' : '';
+        
             let cardsHtml = '';
             if (player.cards && player.cards.length > 0) {
                 player.cards.forEach(card => {
@@ -446,55 +545,135 @@
                     cardsHtml += cardElement.outerHTML;
                 });
             }
-
+        
             playerCard.innerHTML = `
                 <div class="player-header">
                     <div>
                         <div class="player-name">${player.name}</div>
-                        <div class="chip-count">$${player.chips}</div>
-                        ${player.currentBet > 0 ? `<div class="current-bet">Bet: $${player.currentBet}</div>` : ''}
+                        <div class="chip-count"><span class="chip-count__num">${player.chips}</span></div>
                     </div>
                     ${dealerIndicator}
                 </div>
-                
-                <div class="player-cards">
-                    ${cardsHtml}
-                </div>
-                
-                <div class="player-action">
-                    ${player.action || 'Waiting...'}
-                </div>
-                
-                ${player.reasoning ? `
+        
+                <div class="player-cards">${cardsHtml}</div>
+        
+                <div class="player-action">${player.action || 'Waiting...'}</div>
+        
                 <div class="player-reasoning">
-                    ${player.reasoning}
+                  ${player.reasoning && player.reasoning.trim() ? player.reasoning : '&nbsp;'}
                 </div>
-                ` : ''}
+        
+                <div class="player-chip-bar">
+                    <div class="player-chip-bar__fill" id="chipBarFill-${index}"></div>
+                </div>
             `;
-
+        
             return playerCard;
         }
+
+        
+
+
+        
+        
+
+
+
+        // Cache each player's initial chips the first time we see them
+        const initialChips = new Map();
+        let totalInitialChips = 0;
+        
+        // Simple number tween for Pot/Chip labels
+        function animateNumber(el, to) {
+            const from = Number(el.textContent || 0);
+            if (from === to) return;
+            const start = performance.now();
+            const dur = 300;
+        
+            function step(t) {
+                const k = Math.min(1, (t - start) / dur);
+                const val = Math.round(from + (to - from) * k);
+                el.textContent = val;
+                if (k < 1) requestAnimationFrame(step);
+            }
+            el.classList.add('flash-change');
+            setTimeout(() => el.classList.remove('flash-change'), 350);
+            requestAnimationFrame(step);
+        }
+        
+        function ensureInitials(state) {
+            if (!state?.players) return;
+            let changed = false;
+            state.players.forEach(p => {
+                if (!initialChips.has(p.name)) {
+                    initialChips.set(p.name, p.chips);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                totalInitialChips = [...initialChips.values()].reduce((a,b)=>a+b, 0);
+            }
+        }
+        
+        function updateBars(state) {
+            // Update pot bar (scaled to total chips in play)
+            const potFill = document.getElementById('potBarFill');
+            if (potFill && totalInitialChips > 0) {
+                const pct = Math.max(0, Math.min(1, state.pot / totalInitialChips));
+                potFill.style.width = (pct * 100).toFixed(1) + '%';
+            }
+        
+            // Update each player's chip bar
+            if (!state?.players) return;
+            state.players.forEach((p, idx) => {
+                const init = initialChips.get(p.name) || p.chips || 1;
+                const pct = Math.max(0, Math.min(1, p.chips / init));
+        
+                const fill = document.getElementById(`chipBarFill-${idx}`);
+                if (fill) {
+                    fill.style.width = (pct * 100).toFixed(1) + '%';
+                }
+        
+                // Animate the numeric chip count label
+                const numEl = document.querySelector(`#player-${idx} .chip-count__num`);
+                if (numEl) {
+                    animateNumber(numEl, p.chips);
+                }
+            });
+        }
+
+
 
         function updateDisplay(state) {
             if (!state || state.error) {
                 showError(state?.error || "Failed to load game state");
                 return;
             }
-
+        
             gameState = state;
             hideError();
             hideLoading();
-
-            // Update phase and current player
+        
             document.getElementById('gamePhase').textContent = state.phase || "Unknown";
-            document.getElementById('currentPlayer').textContent = 
+            document.getElementById('currentPlayer').textContent =
                 state.currentPlayerName ? `Current: ${state.currentPlayerName}` : "Waiting...";
-
-            // Update pot and current bet
-            document.getElementById('potAmount').textContent = state.pot || 0;
-            document.getElementById('currentBet').textContent = state.currentBet || 0;
-
-            // Update board cards
+        
+            // Decide chip count box width once, based on max possible digits
+            if (state.players && state.players.length > 0) {
+                const startingChips = state.players[0].chips;   // assume all start equal
+                const numPlayers = state.players.length;
+                const maxChips = startingChips * numPlayers;    // worst case: one player takes everything
+                const maxDigits = String(maxChips).length;
+                const chipBoxWidth = maxDigits * 12 + 30;       // ~12px per digit + padding
+                document.documentElement.style
+                    .setProperty('--chip-count-width', chipBoxWidth + 'px');
+            }
+        
+            // Animate pot/current bet numbers
+            animateNumber(document.getElementById('potAmount'), state.pot || 0);
+            animateNumber(document.getElementById('currentBet'), state.currentBet || 0);
+        
+            // Board cards...
             const boardContainer = document.getElementById('boardCards');
             boardContainer.innerHTML = '';
             if (state.board && state.board.length > 0) {
@@ -502,11 +681,10 @@
                     boardContainer.appendChild(createCard(card, true));
                 });
             }
-
-            // Update players grid
+        
+            // Players grid
             const playersGrid = document.getElementById('playersGrid');
             playersGrid.innerHTML = '';
-            
             if (state.players) {
                 state.players.forEach((player, index) => {
                     const isDealer = index === state.dealerIndex;
@@ -514,11 +692,14 @@
                     playersGrid.appendChild(playerCard);
                 });
             }
-
-            // Update button states
+        
+            // Initialize baselines and update bars after DOM exists
+            ensureInitials(state);
+            updateBars(state);
+        
+            // Button states...
             const startBtn = document.getElementById('startHandBtn');
             const nextBtn = document.getElementById('nextActionBtn');
-            
             if (state.isComplete) {
                 startBtn.style.display = 'inline-block';
                 startBtn.textContent = 'Start New Hand';
@@ -529,17 +710,26 @@
             }
         }
 
+
+
         function showLoading() {
-            document.getElementById('loadingMessage').style.display = 'block';
-            document.getElementById('nextActionBtn').disabled = true;
-            document.getElementById('startHandBtn').disabled = true;
+            const loadingEl = document.getElementById('loadingMessage');
+            if (loadingEl) loadingEl.style.display = 'block';   // safe if it exists
+            const nextBtn = document.getElementById('nextActionBtn');
+            const startBtn = document.getElementById('startHandBtn');
+            if (nextBtn) nextBtn.disabled = true;
+            if (startBtn) startBtn.disabled = true;
+        }
+        
+        function hideLoading() {
+            const loadingEl = document.getElementById('loadingMessage');
+            if (loadingEl) loadingEl.style.display = 'none';    // safe if it exists
+            const nextBtn = document.getElementById('nextActionBtn');
+            const startBtn = document.getElementById('startHandBtn');
+            if (nextBtn) nextBtn.disabled = false;
+            if (startBtn) startBtn.disabled = false;
         }
 
-        function hideLoading() {
-            document.getElementById('loadingMessage').style.display = 'none';
-            document.getElementById('nextActionBtn').disabled = false;
-            document.getElementById('startHandBtn').disabled = false;
-        }
 
         function showError(message) {
             const errorEl = document.getElementById('errorMessage');

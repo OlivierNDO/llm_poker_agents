@@ -154,14 +154,14 @@ class PokerGameServer:
             sb_player = players[sb_index]
             sb_amt = min(self.config.small_blind, sb_player.chips)
             logger.info(f"Posting small blind: {sb_player.name} posts {sb_amt}")
-            sb_action = Action(ActionType.BET, sb_amt, reasons=["small_blind"])
+            sb_action = Action(ActionType.BET, sb_amt, reasons=["Small blind required"])
             gs.apply_action(sb_player, sb_action)
             
             # Post big blind  
             bb_player = players[bb_index]
             bb_amt = min(self.config.big_blind, bb_player.chips)
             logger.info(f"Posting big blind: {bb_player.name} posts {bb_amt}")
-            bb_action = Action(ActionType.BET, bb_amt, reasons=["big_blind"])
+            bb_action = Action(ActionType.BET, bb_amt, reasons=["Big blind required"])
             gs.apply_action(bb_player, bb_action)
             
             # Set game state
