@@ -22,41 +22,102 @@ class PokerGameServer:
     def setup_players(self):
         """Initialize players with agents"""
         # Create your LLM clients
-        gpt4_client = OpenRouterCompletionEngine(model='openai/gpt-4o')
-        gemini_client = OpenRouterCompletionEngine(model='google/gemini-2.5-flash')
-        llama_client = OpenRouterCompletionEngine(model='meta-llama/llama-3.3-70b-instruct')
+        
+        claude_sonnet_4_client = OpenRouterCompletionEngine(model='anthropic/claude-sonnet-4')
+        deepseek_3_1_client = OpenRouterCompletionEngine(model='deepseek/deepseek-chat-v3.1')
+        gemini_2_5_client = OpenRouterCompletionEngine(model='google/gemini-2.5-flash')
+        grok_4_client = OpenRouterCompletionEngine(model='x-ai/grok-4')
+        gpt_5_client = OpenRouterCompletionEngine(model='openai/gpt-5')
+        #gpt4_client = OpenRouterCompletionEngine(model='openai/gpt-4o')
+        #llama_client = OpenRouterCompletionEngine(model='meta-llama/llama-3.3-70b-instruct')
+        #gpt_nano_client = OpenRouterCompletionEngine(model='openai/gpt-4.1-nano')
+        #gemma_client = OpenRouterCompletionEngine(model='google/gemma-3-27b-it:free')
+        #claude_haiku_client = OpenRouterCompletionEngine(model='anthropic/claude-3-haiku')
+        
+        
+        
+        
+        # deepseek/deepseek-chat-v3.1
+        # anthropic/claude-sonnet-4
+        # google/gemma-3-27b-it:free
+        # openai/gpt-4.1-nano
+        
+        
+        
         
         self.players = [
+            
+            
             Player(
-                name='GPT-4o',
+                name='Claude Sonnet 4',
                 chips=250,
                 agent=LLMAgent(
-                    client=gpt4_client,
-                    name='GPT-4o',
+                    client=claude_sonnet_4_client,
+                    name='Claude Sonnet 4',
                     table_config=self.config,
                     logger = logger
                 )
             ),
+            
             Player(
-                name='Gemini Flash 2.5',
+                name='DeepSeek 3.1',
                 chips=250,
                 agent=LLMAgent(
-                    client=gemini_client,
-                    name='Gemini Flash 2.5', 
+                    client=deepseek_3_1_client,
+                    name='DeepSeek 3.1',
                     table_config=self.config,
                     logger = logger
                 )
             ),
+            
             Player(
-                name='Llama 3.3 70B',
+                name='Gemini 2.5 Flash',
                 chips=250,
                 agent=LLMAgent(
-                    client=llama_client,
-                    name='Llama 3.3 70B', 
+                    client=gemini_2_5_client,
+                    name='Gemini 2.5 Flash',
                     table_config=self.config,
                     logger = logger
                 )
-            )
+            ),
+            
+            #Player(
+            #    name='Grok 4',
+            #    chips=250,
+            #    agent=LLMAgent(
+            #        client=grok_4_client,
+            #        name='Grok 4',
+            #        table_config=self.config,
+            #        logger = logger
+            #    )
+            #),
+            
+            Player(
+                name='Gpt 5',
+                chips=250,
+                agent=LLMAgent(
+                    client=gpt_5_client,
+                    name='Gpt 5',
+                    table_config=self.config,
+                    logger = logger
+                )
+            ),
+            
+            
+            
+
+            
+            #Player(
+            #    name='Gemma 3 27B',
+            #    chips=250,
+            #    agent=LLMAgent(
+            #        client=gemma_client,
+            #        name='Gemma 3 27B', 
+            #        table_config=self.config,
+            #        logger = logger
+            #    )
+            #),
+            
         ]
 
     def _card_to_string(self, card):
@@ -390,4 +451,4 @@ def reset_game():
         return jsonify({"status": "reset"})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)

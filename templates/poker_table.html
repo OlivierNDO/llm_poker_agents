@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Poker Table</title>
+    <title>LLM Poker Table - Glass Effect</title>
     <style>
         * {
             margin: 0;
@@ -12,26 +12,31 @@
         }
 
         body {
-            font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #0d4f3a 0%, #1a5c47 100%);
-            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 40%, #d9f99d 100%);
+            color: #1f2937;
             min-height: 100vh;
             padding: 20px;
         }
 
         .poker-container {
-            max-width: 1400px;
+            max-width: 2000px;
+            width: 95vw;
             margin: 0 auto;
+            padding: 0 10px;
         }
 
-
-
         .table-area {
-            background: rgba(0,0,0,0.6);
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            border: 3px solid #444;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            box-shadow: 
+                0 8px 32px rgba(31, 38, 135, 0.37),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
 
         .board-section {
@@ -55,39 +60,115 @@
 
         .players-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 20px;
-            max-width: 1200px;
+            max-width: none;
             margin: 0 auto;
+            justify-items: center;
         }
 
+        /* IMPROVED GLASS EFFECT FOR PLAYER CARDS */
         .player-card {
-            background: rgba(0,0,0,0.8);
-            border: 3px solid #444;
-            border-radius: 15px;
-            padding: 20px;
-            transition: all 0.3s ease;
             position: relative;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            width: min(100%, 360px);
+            padding: 20px;
+            border-radius: 20px;
+            overflow: hidden;
+            
+            /* Glass background with proper transparency */
+            background: rgba(255, 255, 255, 0.08);
+            
+            /* Critical: border needs to be more visible */
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            
+            /* Enhanced backdrop filter */
+            backdrop-filter: blur(16px) saturate(200%) contrast(120%) brightness(110%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%) contrast(120%) brightness(110%);
+            
+            /* Better shadow for depth */
+            box-shadow: 
+                0 8px 32px rgba(31, 38, 135, 0.37),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.2);
+            
+            color: #1f2937;
+            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
         }
 
+        /* Glass reflection effect */
+        .player-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0.3) 0%,
+                rgba(255, 255, 255, 0.1) 50%,
+                transparent 100%
+            );
+            border-radius: 20px 20px 0 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Ensure content is above the glass effects */
+        .player-card > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Hover effect */
+        .player-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 12px 40px rgba(31, 38, 135, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Active state */
         .player-card.active {
-            border-color: #FFD700;
-            box-shadow: 0 0 25px rgba(255, 215, 0, 0.4);
-            background: rgba(255, 215, 0, 0.05);
+            border-color: rgba(59, 130, 246, 0.6);
+            box-shadow: 
+                0 0 30px rgba(59, 130, 246, 0.3),
+                0 8px 32px rgba(31, 38, 135, 0.37),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
         }
 
+        /* Folded state */
         .player-card.folded {
-            opacity: 0.6;
-            border-color: #666;
+            filter: grayscale(0.3) opacity(0.7);
+            background: rgba(255, 255, 255, 0.04);
         }
 
+        /* Thinking animation */
         .player-card.thinking {
-            animation: pulse 2s infinite;
+            animation: glassThinking 2s ease-in-out infinite;
         }
-        
+
+        @keyframes glassThinking {
+            0%, 100% { 
+                box-shadow: 
+                    0 8px 32px rgba(31, 38, 135, 0.37),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            }
+            50% { 
+                box-shadow: 
+                    0 12px 40px rgba(31, 38, 135, 0.5),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .player-card.thinking { animation: none; }
+        }
 
         .player-header {
             display: flex;
@@ -96,19 +177,18 @@
             margin-bottom: 15px;
             flex-wrap: wrap;
             gap: 10px;
-            position: relative;
         }
-        
 
         .player-name {
             font-weight: bold;
             font-size: 18px;
-            color: #FFD700;
+            color: #1e40af;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
         .dealer-indicator {
-            background: #FFD700;
-            color: black;
+            background: rgba(59, 130, 246, 0.2);
+            color: #1e40af;
             width: 30px;
             height: 30px;
             border-radius: 50%;
@@ -117,61 +197,72 @@
             justify-content: center;
             font-weight: bold;
             font-size: 14px;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 2px 8px rgba(31, 38, 135, 0.3);
         }
 
         .chip-count {
-            background: rgba(144, 238, 144, 0.2);
-            color: #90EE90;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            color: #1f2937;
+            border-radius: 10px;
             font-weight: bold;
             font-size: 16px;
-            border: 2px solid #90EE90;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             text-align: center;
-        
-            width: var(--chip-count-width, 80px);  /* fallback if JS not run */
+            width: var(--chip-count-width, 80px);
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding: 8px 12px;
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            box-shadow: 
+                0 2px 8px rgba(31, 38, 135, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
         }
 
-
         .pot-display {
-            background: rgba(255, 215, 0, 0.1);
-            border: 2px solid #FFD700;
-            border-radius: 12px;
-            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            padding: 16px 32px;
             margin: 0 auto 25px auto;
             width: fit-content;
             text-align: center;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            box-shadow: 
+                0 4px 16px rgba(31, 38, 135, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
         }
-        
+                
         .pot-label {
             font-size: 14px;
-            color: #FFD700;
+            color: #374151;
             font-weight: 600;
             letter-spacing: 1px;
             margin-bottom: 4px;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
         
         .pot-value {
             font-size: 28px;
-            color: #FFD700;
+            color: #111827;
             font-weight: bold;
             line-height: 1;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
-        
-        /* Optional: subtle change flash for numbers */
         .flash-change {
             animation: flash 450ms ease;
         }
+        
         @keyframes flash {
-            0% { background: rgba(255,255,255,0.18); }
+            0% { background: rgba(255, 255, 255, 0.25); }
             100% { background: transparent; }
         }
-
-
 
         .player-cards {
             display: flex;
@@ -180,7 +271,6 @@
             flex-wrap: wrap;
         }
 
-
         .action-info-row {
             display: flex;
             gap: 12px;
@@ -188,87 +278,132 @@
             align-items: center;
         }
         
+        /* Action box — betting/status */
         .action-box {
-            background: rgba(255, 165, 0, 0.1);
-            color: #FFA500;
-            padding: 8px 12px;
-            border-radius: 6px;
-            height: 36px;
+            flex: 1;
+            min-width: 0;
             display: flex;
             align-items: center;
             justify-content: center;
+        
+            padding: 10px 14px;
+            min-height: 40px;
+        
             font-weight: 600;
             font-size: 13px;
-            border: 1px solid #FFA500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
             text-align: center;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            flex: 1;
-            min-width: 0;
+            color: #111827;
+        
+            /* glass style aligned with chip-count/cards */
+            background: rgba(255, 255, 255, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
+        
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+        
+            box-shadow:
+                0 4px 12px rgba(2, 6, 23, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
         }
         
+        /* Hand strength box */
         .hand-box {
-            background: rgba(255, 215, 0, 0.1);
-            color: #FFD700;
-            padding: 8px 12px;
-            border-radius: 6px;
-            height: 36px;
+            flex: 1;
+            min-width: 0;
+        
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
+        
+            padding: 8px 12px;
+            height: 36px;
+        
+            font-weight: 700;
             font-size: 13px;
-            border: 1px solid #FFD700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #111827;
             text-align: center;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            font-family: 'Arial', sans-serif;
-            flex: 1;
-            min-width: 0;
+        
+            /* match chip-count/cards */
+            background: rgba(255, 255, 255, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
+        
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+        
+            box-shadow:
+                0 4px 12px rgba(2, 6, 23, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
         }
 
 
         .player-reasoning {
-            background: rgba(0, 0, 0, 0.4);
-            color: #ffffff;
-            padding: 16px;
-            border-radius: 8px;
-            font-size: 16px;
-            line-height: 1.5;      /* ~24px per line */
-            height: 174px;         /* fixed height (6 lines) */
-            overflow: hidden;      /* no scrollbar */
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            word-wrap: break-word;
+            /* keep these from your original */
             margin-top: 12px;
+            line-height: 1.5;
+            min-height: 290px;
+            max-height: 290px;
         
-            display: -webkit-box;
-            -webkit-line-clamp: 6; /* truncate after 6 lines */
-            -webkit-box-orient: vertical;
+            /* glass style aligned with cards/chip-count */
+            background: rgba(255, 255, 255, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
+            padding: 16px;
+            color: #111827;
+        
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+        
+            box-shadow:
+                0 4px 12px rgba(2, 6, 23, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        
+            /* allow full text; no mid-sentence clipping */
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-line-clamp: initial;
+            -webkit-box-orient: initial;
+            display: block;
         }
 
-
+        /* Playing cards with glass effect */
         .card {
             width: 65px;
             height: 90px;
-            background: white;
-            border-radius: 10px;
+            position: relative;
+            border-radius: 12px;
+            padding: 6px 4px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            font-weight: bold;
+            
+            background: rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(10px) saturate(150%);
+            -webkit-backdrop-filter: blur(10px) saturate(150%);
+            box-shadow: 
+                0 4px 12px rgba(31, 38, 135, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            
+            color: #0f172a;
+            font-weight: 800;
             font-size: 18px;
-            color: black;
-            border: 2px solid #ddd;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-            padding: 6px 4px;
-            position: relative;
+        }
+        
+        .card.red {
+            color: #dc2626;
         }
 
         .card .rank {
@@ -283,15 +418,14 @@
             margin-top: -4px;
         }
 
-        .card.red {
-            color: #d32f2f;
-        }
-
         .card.back {
-            background: #1a4c96;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(8px) saturate(120%);
+            -webkit-backdrop-filter: blur(8px) saturate(120%);
             background-image: 
-                repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,.1) 2px, rgba(255,255,255,.1) 4px),
-                repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255,255,255,.05) 2px, rgba(255,255,255,.05) 4px);
+                repeating-linear-gradient(45deg, rgba(255,255,255,.15) 0px, rgba(255,255,255,.15) 2px, transparent 2px, transparent 4px),
+                repeating-linear-gradient(-45deg, rgba(255,255,255,.1) 0px, rgba(255,255,255,.1) 2px, transparent 2px, transparent 4px);
         }
 
         .board-card {
@@ -313,23 +447,27 @@
         }
 
         .btn {
-            background: linear-gradient(145deg, #2a5a4a, #1a4a3a);
-            border: 2px solid #3a6a5a;
-            color: white;
-            padding: 15px 30px;
-            font-size: 18px;
-            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #2563eb;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 12px;
             cursor: pointer;
-            margin: 0 10px;
-            transition: all 0.3s ease;
-            font-weight: bold;
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            transition: all 0.2s ease;
+            box-shadow: 
+                0 2px 8px rgba(31, 38, 135, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
         }
-
+        
         .btn:hover {
-            background: linear-gradient(145deg, #3a6a5a, #2a5a4a);
-            border-color: #4a7a6a;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            background: rgba(255, 255, 255, 0.22);
+            box-shadow: 
+                0 4px 16px rgba(31, 38, 135, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            transform: translateY(-1px);
         }
 
         .btn:disabled {
@@ -340,26 +478,42 @@
         }
 
         .action-log {
-            background: rgba(0,0,0,0.8);
-            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
             padding: 20px;
             max-height: 300px;
             overflow-y: auto;
-            border: 2px solid #444;
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            box-shadow: 
+                0 6px 20px rgba(31, 38, 135, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
-
+        
         .action-log h3 {
-            color: #FFD700;
+            color: #2563eb;
             margin-bottom: 15px;
             text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
-
+        
         .log-entry {
-            padding: 8px;
-            margin: 5px 0;
-            background: rgba(255,255,255,0.1);
-            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin: 6px 0;
             font-size: 14px;
+            color: #334155;
+            backdrop-filter: blur(8px) saturate(160%);
+            -webkit-backdrop-filter: blur(8px) saturate(160%);
+            box-shadow: 
+                0 2px 6px rgba(31, 38, 135, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
 
         .loading {
@@ -370,19 +524,18 @@
         }
 
         .error {
-            background: rgba(200, 0, 0, 0.8);
-            color: white;
+            background: rgba(239, 68, 68, 0.2);
+            color: #dc2626;
             padding: 15px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin: 15px 0;
             text-align: center;
-            border: 2px solid #ff6666;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            box-shadow: 
+                0 4px 12px rgba(239, 68, 68, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
 
         /* Responsive design */
@@ -401,6 +554,28 @@
                 align-items: flex-start;
             }
         }
+
+        /* Fallback for browsers without backdrop-filter */
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+            .player-card {
+                background: rgba(255, 255, 255, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.9);
+            }
+            
+            .table-area {
+                background: rgba(255, 255, 255, 0.7);
+            }
+            
+            .pot-display,
+            .action-box,
+            .hand-box,
+            .player-reasoning,
+            .chip-count,
+            .action-log {
+                background: rgba(255, 255, 255, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.8);
+            }
+        }
     </style>
 </head>
 <body>
@@ -409,8 +584,6 @@
 
         <div class="table-area">
             <div class="board-section">
-                <div class="board-title">Community Cards</div>
-                
                 <div class="pot-display">
                     <div class="pot-label">POT</div>
                     <div class="pot-value">$<span id="potAmount">0</span></div>
@@ -436,6 +609,7 @@
             <h3>Game Log</h3>
             <div id="actionLog">
                 <div class="log-entry">Ready to start - click "Start New Hand"</div>
+                <div class="log-entry">Glass effect demonstration active</div>
             </div>
         </div>
     </div>
@@ -454,19 +628,16 @@
                 return card;
             }
             
-            // Parse card string and convert T to 10
             let rank = cardStr[0];
             if (rank === 'T') {
                 rank = '10';
             }
             const suit = cardStr[1].toLowerCase();
             
-            // Determine color
             if (suit === 'h' || suit === 'd') {
                 card.classList.add('red');
             }
             
-            // Unicode suit symbols
             const suitSymbols = {
                 'c': '♣',
                 'd': '♦', 
@@ -481,19 +652,17 @@
             
             return card;
         }
-        
-
 
         function createPlayerCard(player, index, isDealer = false, gameState = null) {
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
             playerCard.id = `player-${index}`;
-        
+
             if (!player.active) playerCard.classList.add('folded');
             else if (player.isCurrentPlayer) playerCard.classList.add('active', 'thinking');
-        
+
             const dealerIndicator = isDealer ? '<div class="dealer-indicator">D</div>' : '';
-        
+
             let cardsHtml = '';
             if (player.cards && player.cards.length > 0) {
                 player.cards.forEach(card => {
@@ -501,13 +670,10 @@
                     cardsHtml += cardElement.outerHTML;
                 });
             }
-        
-            // Show hand strength only post-flop
-            console.log('Phase check:', gameState?.phase);
+
             const showHandStrength = gameState && 
                 ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(gameState.phase);
-            console.log('Show hand strength:', showHandStrength);
-        
+
             playerCard.innerHTML = `
                 <div class="player-header">
                     <div>
@@ -516,41 +682,31 @@
                     </div>
                     ${dealerIndicator}
                 </div>
-        
+
                 <div class="player-cards">${cardsHtml}</div>
-        
+
                 <div class="action-info-row">
                     <div class="action-box">${player.action || 'Waiting...'}</div>
                     ${showHandStrength && player.hand ? `<div class="hand-box">${player.hand}</div>` : ''}
                 </div>
-        
+
                 <div class="player-reasoning">
                   ${player.reasoning && player.reasoning.trim() ? player.reasoning : '&nbsp;'}
                 </div>
             `;
-        
+
             return playerCard;
         }
 
-        
-
-
-        
-        
-
-
-
-        // Cache each player's initial chips the first time we see them
         const initialChips = new Map();
         let totalInitialChips = 0;
         
-        // Simple number tween for Pot/Chip labels
         function animateNumber(el, to) {
             const from = Number(el.textContent || 0);
             if (from === to) return;
             const start = performance.now();
             const dur = 300;
-        
+
             function step(t) {
                 const k = Math.min(1, (t - start) / dur);
                 const val = Math.round(from + (to - from) * k);
@@ -577,14 +733,12 @@
         }
         
         function updateBars(state) {
-           // Update pot bar (scaled to total chips in play)
            const potFill = document.getElementById('potBarFill');
            if (potFill && totalInitialChips > 0) {
                const pct = Math.max(0, Math.min(1, state.pot / totalInitialChips));
                potFill.style.width = (pct * 100).toFixed(1) + '%';
            }
-        
-           // Animate the numeric chip count labels
+
            if (!state?.players) return;
            state.players.forEach((p, idx) => {
                const numEl = document.querySelector(`#player-${idx} .chip-count__num`);
@@ -594,52 +748,40 @@
            });
         }
 
-
         function updateDisplay(state) {
             if (!state || state.error) {
                 showError(state?.error || "Failed to load game state");
                 return;
             }
-        
+
             gameState = state;
             hideError();
             hideLoading();
-        
-            //document.getElementById('gamePhase').textContent = state.phase || "Unknown";
-            //document.getElementById('currentPlayer').textContent =
-                state.currentPlayerName ? `Current: ${state.currentPlayerName}` : "Waiting...";
-        
-            // Decide chip count box width once, based on max possible digits
+
             if (state.players && state.players.length > 0) {
-                const startingChips = state.players[0].chips;   // assume all start equal
+                const startingChips = state.players[0].chips;
                 const numPlayers = state.players.length;
-                const maxChips = startingChips * numPlayers;    // worst case: one player takes everything
+                const maxChips = startingChips * numPlayers;
                 const maxDigits = String(maxChips).length;
-                const chipBoxWidth = maxDigits * 12 + 30;       // ~12px per digit + padding
+                const chipBoxWidth = maxDigits * 12 + 30;
                 document.documentElement.style
                     .setProperty('--chip-count-width', chipBoxWidth + 'px');
             }
-        
-            // Animate pot/current bet numbers
+
             animateNumber(document.getElementById('potAmount'), state.pot || 0);
-            //animateNumber(document.getElementById('currentBet'), state.currentBet || 0);
-        
-            // Board cards - always show 5 slots
+
             const boardContainer = document.getElementById('boardCards');
             boardContainer.innerHTML = '';
             const boardCards = state.board || [];
             
             for (let i = 0; i < 5; i++) {
                 if (i < boardCards.length && boardCards[i]) {
-                    // Show actual card
                     boardContainer.appendChild(createCard(boardCards[i], true));
                 } else {
-                    // Show card back placeholder
                     boardContainer.appendChild(createCard('', true));
                 }
             }
-        
-            // Players grid
+
             const playersGrid = document.getElementById('playersGrid');
             playersGrid.innerHTML = '';
             if (state.players) {
@@ -649,12 +791,10 @@
                     playersGrid.appendChild(playerCard);
                 });
             }
-        
-            // Initialize baselines and update bars after DOM exists
+
             ensureInitials(state);
             updateBars(state);
-        
-            // Button states...
+
             const startBtn = document.getElementById('startHandBtn');
             const nextBtn = document.getElementById('nextActionBtn');
             if (state.isComplete) {
@@ -666,13 +806,10 @@
                 nextBtn.style.display = 'inline-block';
             }
         }
-        
-
-
 
         function showLoading() {
             const loadingEl = document.getElementById('loadingMessage');
-            if (loadingEl) loadingEl.style.display = 'block';   // safe if it exists
+            if (loadingEl) loadingEl.style.display = 'block';
             const nextBtn = document.getElementById('nextActionBtn');
             const startBtn = document.getElementById('startHandBtn');
             if (nextBtn) nextBtn.disabled = true;
@@ -681,13 +818,12 @@
         
         function hideLoading() {
             const loadingEl = document.getElementById('loadingMessage');
-            if (loadingEl) loadingEl.style.display = 'none';    // safe if it exists
+            if (loadingEl) loadingEl.style.display = 'none';
             const nextBtn = document.getElementById('nextActionBtn');
             const startBtn = document.getElementById('startHandBtn');
             if (nextBtn) nextBtn.disabled = false;
             if (startBtn) startBtn.disabled = false;
         }
-
 
         function showError(message) {
             const errorEl = document.getElementById('errorMessage');
@@ -708,7 +844,6 @@
             const logContainer = document.getElementById('actionLog');
             logContainer.innerHTML = '';
             
-            // Show last 15 entries
             const recentLog = actionLog.slice(-15);
             recentLog.forEach(entry => {
                 const logEntry = document.createElement('div');
@@ -792,17 +927,14 @@
                     throw new Error(`Server error: ${response.status}`);
                 }
                 
-                // Clear display
                 gameState = null;
                 actionLog = ["Game reset - ready to start new hand"];
                 updateActionLog();
                 
-                // Reset UI
                 document.getElementById('potAmount').textContent = "0";
                 document.getElementById('boardCards').innerHTML = '';
                 document.getElementById('playersGrid').innerHTML = '';
                 
-                // Reset buttons
                 document.getElementById('startHandBtn').style.display = 'inline-block';
                 document.getElementById('startHandBtn').textContent = 'Start New Hand';
                 document.getElementById('nextActionBtn').style.display = 'none';
@@ -817,7 +949,6 @@
             }
         }
 
-        // Initialize
         updateActionLog();
     </script>
 </body>
