@@ -24,52 +24,7 @@
             margin: 0 auto;
         }
 
-        .game-header {
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin-bottom: 30px;
-            border: 2px solid #444;
-        }
 
-        .phase {
-            font-size: 28px;
-            color: #FFD700;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-
-        .current-player {
-            font-size: 18px;
-            color: #90EE90;
-            margin-bottom: 10px;
-        }
-
-        .pot-info {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-top: 15px;
-        }
-
-        .pot-amount, .current-bet-display {
-            background: rgba(255, 215, 0, 0.1);
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 2px solid #FFD700;
-        }
-
-        .pot-amount {
-            font-size: 24px;
-            font-weight: bold;
-            color: #FFD700;
-        }
-
-        .current-bet-display {
-            font-size: 20px;
-            color: #FFA500;
-        }
 
         .table-area {
             background: rgba(0,0,0,0.6);
@@ -134,7 +89,6 @@
         }
         
 
-
         .player-header {
             display: flex;
             justify-content: space-between;
@@ -181,61 +135,32 @@
         }
 
 
-        /* Chip bars */
-        .chip-bar {
-            width: 100%;
-            height: 8px;
-            background: rgba(144, 238, 144, 0.15);
-            border: 1px solid rgba(144, 238, 144, 0.4);
-            border-radius: 999px;
-            overflow: hidden;
-            margin-top: 8px;
-        }
-        .chip-bar__fill {
-            height: 100%;
-            width: 0%;
-            background: #90EE90;
-            transition: width 300ms ease;
+        .pot-display {
+            background: rgba(255, 215, 0, 0.1);
+            border: 2px solid #FFD700;
+            border-radius: 12px;
+            padding: 12px 24px;
+            margin: 0 auto 25px auto;
+            width: fit-content;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
         
-        .player-chip-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 10px;
-            background: rgba(144, 238, 144, 0.15);
-            border-radius: 0 0 12px 12px;
-            overflow: hidden;
+        .pot-label {
+            font-size: 14px;
+            color: #FFD700;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
         }
         
-        .player-chip-bar__fill {
-            height: 100%;
-            width: 0%;
-            background: #90EE90;
-            transition: width 0.3s ease;
+        .pot-value {
+            font-size: 28px;
+            color: #FFD700;
+            font-weight: bold;
+            line-height: 1;
         }
 
-        
-                
-        
-        /* Pot bar in header */
-        .pot-bar {
-            width: 420px;
-            max-width: 90vw;
-            height: 10px;
-            background: rgba(255, 215, 0, 0.12);
-            border: 1px solid rgba(255, 215, 0, 0.5);
-            border-radius: 999px;
-            overflow: hidden;
-            margin: 8px auto 0;
-        }
-        .pot-bar__fill {
-            height: 100%;
-            width: 0%;
-            background: #FFD700;
-            transition: width 300ms ease;
-        }
         
         /* Optional: subtle change flash for numbers */
         .flash-change {
@@ -255,22 +180,59 @@
             flex-wrap: wrap;
         }
 
-        .player-action {
+
+        .action-info-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        
+        .action-box {
             background: rgba(255, 165, 0, 0.1);
             color: #FFA500;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            height: 44px;                  /* fixed height */
+            padding: 8px 12px;
+            border-radius: 6px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 13px;
             border: 1px solid #FFA500;
-            overflow: hidden;              /* prevent text from pushing the box bigger */
-            text-overflow: ellipsis;       /* show … if text is too long */
-            white-space: nowrap;           /* keep text on one line */
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            flex: 1;
+            min-width: 0;
         }
+        
+        .hand-box {
+            background: rgba(255, 215, 0, 0.1);
+            color: #FFD700;
+            padding: 8px 12px;
+            border-radius: 6px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 13px;
+            border: 1px solid #FFD700;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-family: 'Arial', sans-serif;
+            flex: 1;
+            min-width: 0;
+        }
+
 
         .player-reasoning {
             background: rgba(0, 0, 0, 0.4);
@@ -443,23 +405,17 @@
 </head>
 <body>
     <div class="poker-container">
-        <div class="game-header">
-            <div class="phase" id="gamePhase">Ready to Start</div>
-            <div class="current-player" id="currentPlayer">Click "Start New Hand" to begin</div>
-            <div class="error" id="errorMessage" style="display: none;"></div>
-            
-            <div class="pot-info">
-                <div class="pot-amount">Pot: $<span id="potAmount">0</span></div>
-                <div class="current-bet-display">Current Bet: $<span id="currentBet">0</span></div>
-            </div>
-            <div class="pot-bar">
-                <div class="pot-bar__fill" id="potBarFill"></div>
-            </div>
-        </div>
+        <div class="error" id="errorMessage" style="display: none;"></div>
 
         <div class="table-area">
             <div class="board-section">
                 <div class="board-title">Community Cards</div>
+                
+                <div class="pot-display">
+                    <div class="pot-label">POT</div>
+                    <div class="pot-value">$<span id="potAmount">0</span></div>
+                </div>
+                
                 <div class="board-cards" id="boardCards">
                     <!-- Community cards will be added here -->
                 </div>
@@ -528,7 +484,7 @@
         
 
 
-        function createPlayerCard(player, index, isDealer = false) {
+        function createPlayerCard(player, index, isDealer = false, gameState = null) {
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
             playerCard.id = `player-${index}`;
@@ -546,6 +502,12 @@
                 });
             }
         
+            // Show hand strength only post-flop
+            console.log('Phase check:', gameState?.phase);
+            const showHandStrength = gameState && 
+                ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(gameState.phase);
+            console.log('Show hand strength:', showHandStrength);
+        
             playerCard.innerHTML = `
                 <div class="player-header">
                     <div>
@@ -557,14 +519,13 @@
         
                 <div class="player-cards">${cardsHtml}</div>
         
-                <div class="player-action">${player.action || 'Waiting...'}</div>
+                <div class="action-info-row">
+                    <div class="action-box">${player.action || 'Waiting...'}</div>
+                    ${showHandStrength && player.hand ? `<div class="hand-box">${player.hand}</div>` : ''}
+                </div>
         
                 <div class="player-reasoning">
                   ${player.reasoning && player.reasoning.trim() ? player.reasoning : '&nbsp;'}
-                </div>
-        
-                <div class="player-chip-bar">
-                    <div class="player-chip-bar__fill" id="chipBarFill-${index}"></div>
                 </div>
             `;
         
@@ -616,32 +577,22 @@
         }
         
         function updateBars(state) {
-            // Update pot bar (scaled to total chips in play)
-            const potFill = document.getElementById('potBarFill');
-            if (potFill && totalInitialChips > 0) {
-                const pct = Math.max(0, Math.min(1, state.pot / totalInitialChips));
-                potFill.style.width = (pct * 100).toFixed(1) + '%';
-            }
+           // Update pot bar (scaled to total chips in play)
+           const potFill = document.getElementById('potBarFill');
+           if (potFill && totalInitialChips > 0) {
+               const pct = Math.max(0, Math.min(1, state.pot / totalInitialChips));
+               potFill.style.width = (pct * 100).toFixed(1) + '%';
+           }
         
-            // Update each player's chip bar
-            if (!state?.players) return;
-            state.players.forEach((p, idx) => {
-                const init = initialChips.get(p.name) || p.chips || 1;
-                const pct = Math.max(0, Math.min(1, p.chips / init));
-        
-                const fill = document.getElementById(`chipBarFill-${idx}`);
-                if (fill) {
-                    fill.style.width = (pct * 100).toFixed(1) + '%';
-                }
-        
-                // Animate the numeric chip count label
-                const numEl = document.querySelector(`#player-${idx} .chip-count__num`);
-                if (numEl) {
-                    animateNumber(numEl, p.chips);
-                }
-            });
+           // Animate the numeric chip count labels
+           if (!state?.players) return;
+           state.players.forEach((p, idx) => {
+               const numEl = document.querySelector(`#player-${idx} .chip-count__num`);
+               if (numEl) {
+                   animateNumber(numEl, p.chips);
+               }
+           });
         }
-
 
 
         function updateDisplay(state) {
@@ -654,8 +605,8 @@
             hideError();
             hideLoading();
         
-            document.getElementById('gamePhase').textContent = state.phase || "Unknown";
-            document.getElementById('currentPlayer').textContent =
+            //document.getElementById('gamePhase').textContent = state.phase || "Unknown";
+            //document.getElementById('currentPlayer').textContent =
                 state.currentPlayerName ? `Current: ${state.currentPlayerName}` : "Waiting...";
         
             // Decide chip count box width once, based on max possible digits
@@ -671,15 +622,21 @@
         
             // Animate pot/current bet numbers
             animateNumber(document.getElementById('potAmount'), state.pot || 0);
-            animateNumber(document.getElementById('currentBet'), state.currentBet || 0);
+            //animateNumber(document.getElementById('currentBet'), state.currentBet || 0);
         
-            // Board cards...
+            // Board cards - always show 5 slots
             const boardContainer = document.getElementById('boardCards');
             boardContainer.innerHTML = '';
-            if (state.board && state.board.length > 0) {
-                state.board.forEach(card => {
-                    boardContainer.appendChild(createCard(card, true));
-                });
+            const boardCards = state.board || [];
+            
+            for (let i = 0; i < 5; i++) {
+                if (i < boardCards.length && boardCards[i]) {
+                    // Show actual card
+                    boardContainer.appendChild(createCard(boardCards[i], true));
+                } else {
+                    // Show card back placeholder
+                    boardContainer.appendChild(createCard('', true));
+                }
             }
         
             // Players grid
@@ -688,7 +645,7 @@
             if (state.players) {
                 state.players.forEach((player, index) => {
                     const isDealer = index === state.dealerIndex;
-                    const playerCard = createPlayerCard(player, index, isDealer);
+                    const playerCard = createPlayerCard(player, index, isDealer, state);
                     playersGrid.appendChild(playerCard);
                 });
             }
@@ -709,6 +666,7 @@
                 nextBtn.style.display = 'inline-block';
             }
         }
+        
 
 
 
@@ -840,10 +798,7 @@
                 updateActionLog();
                 
                 // Reset UI
-                document.getElementById('gamePhase').textContent = "Ready to Start";
-                document.getElementById('currentPlayer').textContent = "Click 'Start New Hand' to begin";
                 document.getElementById('potAmount').textContent = "0";
-                document.getElementById('currentBet').textContent = "0";
                 document.getElementById('boardCards').innerHTML = '';
                 document.getElementById('playersGrid').innerHTML = '';
                 

@@ -298,7 +298,16 @@ class PokerGameServer:
                 
                 # Get reasoning if available
                 if hasattr(last_action_record.action, 'reasons') and last_action_record.action.reasons:
-                    reasoning = "; ".join(last_action_record.action.reasons)
+                    #reasoning = "; ".join(last_action_record.action.reasons)
+                    #reasoning = ". ".join(last_action_record.action.reasons)
+                    # Clean up each reason and join properly
+                    cleaned_reasons = []
+                    for reason in last_action_record.action.reasons:
+                        reason = reason.strip()
+                        if reason and not reason.endswith('.'):
+                            reason += '.'
+                        cleaned_reasons.append(reason)
+                    reasoning = " ".join(cleaned_reasons)
             
             players_data.append({
                 "name": player.name,
@@ -306,6 +315,7 @@ class PokerGameServer:
                 "cards": hole_cards,
                 "action": last_action,
                 "reasoning": reasoning,
+                "hand": (str(player.hand_name) if player.hand_name is not None else None),
                 "active": player.is_active,
                 "currentBet": player.current_bet,
                 "isCurrentPlayer": i == current_player_index

@@ -221,9 +221,17 @@ class FeatureReporter:
         
     def get_cards(self) -> dict:
         """Get dictionary with player hole cards and board cards"""
+        # old:
+        # return {
+        #     'my_hole_cards': [card_to_str(c) for c in self.hole_cards],
+        #     'board': [card_to_str(c) for c in self.game_state.board.copy()]
+        # }
+    
+        hole = self.hole_cards or []
+        board = (self.game_state.board or []).copy()
         return {
-            'my_hole_cards': [card_to_str(c) for c in self.hole_cards],
-            'board': [card_to_str(c) for c in self.game_state.board.copy()]
+            'my_hole_cards': [card_to_str(c) for c in hole],
+            'board': [card_to_str(c) for c in board]
         }
 
     def parse_card(self, card_str: str) -> tuple[int, int]:
@@ -250,13 +258,16 @@ class FeatureReporter:
         )
         return f"Approximate hand strength {scalar:.1f} (0 to 1 scale)"
     
-    def current_hand_string(self) -> str:
+    
+    def current_hand_string(self, raw = False) -> str:
         hand_name = fe.best_hand_string(
             hole_ranks = self.hole_ranks,
             hole_suits = self.hole_suits,
             board_ranks = self.board_ranks,
             board_suits = self.board_suits   
         )
+        if raw:
+            return hand_name
         return f"Your current hand is {hand_name}"
     
     

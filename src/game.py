@@ -770,12 +770,14 @@ class Player:
         self.current_bet = 0
         self.is_active = True
         self.is_all_in = False
+        self.hand_name = None
     
     def reset_for_hand(self):
         self.hole_cards = None
         self.current_bet = 0
         self.is_active = True
         self.is_all_in = False
+        self.hand_name = None
     
     def can_act(self) -> bool:
         return self.is_active and not self.is_all_in and self.chips > 0
@@ -951,7 +953,12 @@ class Player:
                         'amount': action_record.action.amount or 0,
                         'board_at_time': action_record.board_at_time.copy()
                     })
-        
+                    
+        #self.hand_name = self.get_hand_name(game_state)
+        try:
+            self.hand_name = self.get_hand_name(game_state)
+        except Exception:
+            self.hand_name = None
         return info
     
     def get_readable_hand_summary(self, game_state: GameState) -> str:
@@ -1085,6 +1092,21 @@ class Player:
                     lines.append(f"    {action['player']}: {action['action']}")
         
         return "\n".join(lines)
+    
+    
+    def get_hand_name(self, game_state: GameState):
+        #feature_reporter = FeatureReporter(self.hole_cards, game_state)
+        #hand_name = feature_reporter.current_hand_string(raw = True)
+        #return hand_name
+        if not self.hole_cards or len(self.hole_cards) != 2:
+            return None
+        try:
+            feature_reporter = FeatureReporter(self.hole_cards, game_state)
+            name = feature_reporter.current_hand_string(raw=True)
+            return str(name) if name is not None else None
+        except Exception:
+            self.logger.info('Returning None for hand name')
+            return None
 
     def get_hand_features(self, game_state: GameState) -> List[str]:
         """Get descriptive hand features (separated from basic prompt info)"""
