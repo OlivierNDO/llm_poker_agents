@@ -1,72 +1,79 @@
-# Poker LLM Agent â€“ Project Plan
+# AI Poker Agents
 
-This document outlines the planned design for the Poker LLM Agent.  
-The core idea is that **before deciding on a final action (fold / check / call / bet / raise / all-in)**,  
-the agent has the *option* to perform intermediate reasoning or call specialized services/tools.  
-These are optional steps â€“ the agent may skip them if it deems them unnecessary.
+This project runs real-time poker games between AI models like Claude, GPT, Gemini, and DeepSeek. Each model plays Texas Hold’em with the same information a human would: hole cards, community cards, betting history, and opponent stats. Their actions are based on their own reasoning and strategy.
+
+
+## Features
+- **Agent decision-making**: Each model receives comprehensive game information and uses strategic reasoning to make decisions
+- **Full poker mechanics**: Complete Texas Hold'em rules with side pot handling, position-aware strategy, and blind defense
+- **Multi-hand tournaments**: Run extended matches and observe how different models' playing styles emerge over time
+
+## Agent Decision Process
+
+**Information Gathering**: The agent decides what analysis to run:
+- **Opponent statistics**: VPIP, aggression patterns, fold rates from previous hands
+- **Hand analysis**: Equity calculations, draw probabilities, hand strength evaluation
+
+**Strategic Decision**: The agent evaluates multiple factors to determine its play:
+- **Action type**: 
+  - Agent considers: Game state (cards, pot, position, betting history), opponent statistics (VPIP/PFR/aggression), hand analysis (strength, draw probabilities), strategic context (pot odds, blind defense, board texture)
+  - Agent decides: 
+    ```
+    fold | check | call | bet | raise | all_in
+    ```
+  - Agent considers bluffing: If initial decision is passive (check/call), evaluates switching to aggressive bluff based on board texture and opponent fold rates
+- **Bet sizing**: 
+  - Agent considers: Hand strength, pot size, stack depth, position, opponent calling ranges
+  - Agent decides: Optimal size for value extraction or bluff effectiveness
+
+**Reasoning**: The agent provides explanations for every decision, showing its strategic thinking and the factors that influenced each choice.
+
+
+
+## Quick Start
+
+1. **Set up your [OpenRouter](https://openrouter.ai/) API keys** in `.env`:
+   ```
+   OPEN_ROUTER_TOKEN=your_openrouter_api_key
+   ```
+
+2. **Configure players** in `config.yaml`:
+   ```yaml
+   players:
+     - name: "Claude Sonnet 4"
+       model: "anthropic/claude-sonnet-4"
+       chips: 250
+       enabled: true
+     - name: "GPT-4"
+       model: "openai/gpt-4o"
+       chips: 250
+       enabled: true
+   ```
+
+3. **Run the tournament**:
+   ```bash
+   python app.py
+   ```
+
+4. **Watch** at http://127.0.0.1:5000/
+
+## Running Games  
+
+You can run games in two ways:  
+- **Manual mode**: Step through each action to see how models make decisions.  
+- **Auto-play mode**: Let a full match run without interaction.  
+
+Game settings (blinds, starting stacks, hand limits) are configurable in `config.yaml`.  
+
+## Output  
+
+During play you’ll see:  
+- Each model’s action and its reasoning  
+- Pot sizes, chip counts, and player stats (VPIP, PFR, aggression factor)  
+- Showdowns with full hand evaluation and side pot resolution  
+
+Multi-hand runs highlight differences in style between models (tight vs loose, aggressive vs passive).  
+
+
 
 ---
-
-## Preliminary Optional Steps
-
-### 1. Bluff Assessment
-- **When triggered**: At the start of the agentâ€™s turn, if one or more opponents have bet this round.
-- **Goal**: Estimate the likelihood that each betting opponent is bluffing.
-- **Inputs**:
-  - Opponentsâ€™ recent actions (`GameState.get_actions_since_board_change`)
-  - Opponent profiles (`StatsTracker.get_opponent_stats_summary`)
-- **Output**: Probability or qualitative estimate (`likely bluffing`, `unlikely bluffing`).
-- **Usage**: Provides a signal to inform call/fold/raise decisions.
-
----
-
-### 2. Bluff Decision
-- **When triggered**: Only if the agent has a weak/losing hand *and* conditions suggest a bluff is viable.
-- **Goal**: Decide whether to bluff in the current betting round.
-- **Outputs**:
-  - `{ "do_bluff": true|false }`
-  - Potential bluff sizing guidelines.
-- **Notes**:
-  - Decision may be deferred â€“ an agent may choose not to bluff now but keep bluffing open for a later street.
-
----
-
-### 3. Board Strength Assessment
-- **When triggered**: Post-flop, turn, or river.
-- **Goal**: Evaluate how the community cards interact with potential opponent holdings.
-- **Inputs**:
-  - Current board cards
-  - Action history for context
-- **Outputs**:
-  - A summary like: `board favors drawing hands`, `board strongly favors made straights/flushes`, `dry board`.
-- **Usage**: Provides context for both value betting and bluffing decisions.
-
----
-
-### 4. Logging & Rationale Capture
-- **Goal**: Record intermediate assessments and the final action for training/evaluation.
-- **Output Example**:
-  ```json
-  {
-    "action": "raise",
-    "amount": 12,
-    "reasoning": "Opponent aggression high, board favors my range, bluff equity sufficient"
-  }
-
-### 5. Conditional Prompt Components (from feature_engineering.py)
-- **Goal**: Get descriptive features re: current game state from engineered features, conditionally represent as text
-
-
-### 6. Bet Sizing
-- **Goal**: Logic to determine appropriate bet sizing based on whether it's a bluff, win odds, etc.
-
-
-
-### 7. Use Predictive Model
-- **Goal**: (for all agents or None), allow use of the predictive model
-
-
-
-
-
-

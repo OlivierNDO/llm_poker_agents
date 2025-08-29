@@ -516,6 +516,8 @@ class PokerGameServer:
             hand_str = str(player.hand_name) if player.hand_name is not None else None
             if hand_str and ':' in hand_str:
                 hand_str = hand_str.split(':', 1)[0].strip()
+            if hand_str and ',' in hand_str:
+                hand_str = hand_str.split(',', 1)[0].strip()
             
             players_data.append({
                 "name": player.name,
@@ -523,7 +525,7 @@ class PokerGameServer:
                 "cards": hole_cards,
                 "action": last_action,
                 "reasoning": reasoning,
-                "hand": (str(player.hand_name) if player.hand_name is not None else None),
+                "hand": hand_str,
                 "active": player.is_active,
                 "currentBet": player.current_bet,
                 "isCurrentPlayer": i == current_player_index

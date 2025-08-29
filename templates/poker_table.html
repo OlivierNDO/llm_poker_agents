@@ -576,6 +576,75 @@
                 border: 1px solid rgba(255, 255, 255, 0.8);
             }
         }
+        
+        /***** Chip stack visuals (embedded from standalone) *****/
+        :root {
+          --chip-width: 50px;
+          --chip-height: 4px;
+          --chip-spacing: 3px;
+          --max-stack-height: 40;
+        }
+        
+        .stacks-grid {
+          display: flex;
+          gap: 8px;
+          justify-content: center;
+          align-items: flex-end;
+          min-height: calc(var(--max-stack-height) * var(--chip-spacing) + 30px);
+          padding: 0 6px;
+          margin-top: 10px;
+        }
+        
+        .chip-stack {
+          position: relative;
+          width: var(--chip-width);
+          height: calc(var(--max-stack-height) * var(--chip-spacing) + 20px);
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+        }
+        
+        .stack-column {
+          position: relative;
+          width: var(--chip-width);
+          height: 100%;
+          filter: drop-shadow(0 6px 12px rgba(0,0,0,0.4));
+        }
+        
+        .chip {
+          position: absolute;
+          left: 0;
+          width: var(--chip-width);
+          height: var(--chip-height);
+          border-radius: 2px;
+          transition: all 0.5s cubic-bezier(0.4,0,0.2,1);
+          transform-origin: center bottom;
+          opacity: 0;
+          transform: translateY(10px) scaleY(0.5);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.3);
+        }
+        .chip.visible { opacity: 1; transform: translateY(0) scaleY(1); }
+        .chip.removing { opacity: 0; transform: translateY(10px) scaleY(0.5); }
+        
+        /* colors */
+        .chip.blue   { background: linear-gradient(to bottom,#60a5fa 0%,#3b82f6 20%,#1e40af 50%,#3b82f6 80%,#60a5fa 100%); }
+        .chip.red    { background: linear-gradient(to bottom,#f87171 0%,#ef4444 20%,#b91c1c 50%,#ef4444 80%,#f87171 100%); }
+        .chip.green  { background: linear-gradient(to bottom,#4ade80 0%,#22c55e 20%,#15803d 50%,#22c55e 80%,#4ade80 100%); }
+        .chip.purple { background: linear-gradient(to bottom,#c084fc 0%,#a855f7 20%,#7c3aed 50%,#a855f7 80%,#c084fc 100%); }
+        .chip.orange { background: linear-gradient(to bottom,#fb923c 0%,#f97316 20%,#c2410c 50%,#f97316 80%,#fb923c 100%); }
+        
+        .player-delta {
+          position: absolute; top: 8px; right: 12px;
+          padding: 6px 10px; border-radius: 12px; font-weight: 800; font-size: 12px;
+          background: rgba(0,0,0,0.85); color: #22c55e; border: 1px solid rgba(255,255,255,0.2);
+          opacity: 0; transform: translateY(-6px); transition: all .25s ease;
+        }
+        .player-delta.neg { color: #ef4444; }
+        .player-delta.show { opacity: 1; transform: translateY(0); }
+
+        
+        
+        
     </style>
 </head>
 <body>
@@ -623,6 +692,10 @@
         let isProcessing = false;
         let isAutoPlaying = false;
         let autoPlayInterval = null;
+        
+        const initialChips = new Map();   // one and only declaration
+        let totalInitialChips = 0;        // one and only declaration
+        const playerChipUI = new Map();   // one and only declaration
 
         function createCard(cardStr, isBoard = false) {
             const card = document.createElement('div');
@@ -694,18 +767,28 @@
                     <div class="action-box">${player.action || 'Waiting...'}</div>
                     ${showHandStrength && player.hand ? `<div class="hand-box">${player.hand}</div>` : ''}
                 </div>
+                
+                
+
 
                 <div class="player-reasoning">
                   ${player.reasoning && player.reasoning.trim() ? player.reasoning : '&nbsp;'}
                 </div>
+                
+                
+                <div class="stacks-grid" data-player="${player.name}">
+                  <div class="chip-stack"><div class="stack-column"><!-- chips go here --></div></div>
+                  <div class="chip-stack"><div class="stack-column"></div></div>
+                  <div class="chip-stack"><div class="stack-column"></div></div>
+                  <div class="chip-stack"><div class="stack-column"></div></div>
+                </div>
+                <div class="player-delta" id="delta-${index}"></div>
             `;
 
             return playerCard;
         }
 
-        const initialChips = new Map();
-        let totalInitialChips = 0;
-        
+
         function animateNumber(el, to) {
             const from = Number(el.textContent || 0);
             if (from === to) return;
@@ -752,6 +835,144 @@
                }
            });
         }
+        
+        /* === Chip animation engine (no randomness) === */
+        class ChipStack {
+          constructor(stackElement, color) {
+            this.el = stackElement;
+            this.color = color;
+            this.count = 0;
+            this.chips = [];
+          }
+          setChipCount(n, animated = true) {
+            const target = Math.max(0, Math.min(n, 40));
+            if (target > this.count) {
+              for (let i = this.count; i < target; i++) this._add(i, animated);
+            } else if (target < this.count) {
+              for (let i = this.count - 1; i >= target; i--) this._remove(i, animated);
+            }
+            this.count = target;
+          }
+          _add(i, animated) {
+            const chip = document.createElement('div');
+            chip.className = `chip ${this.color}`;
+            chip.style.bottom = `${i * 3}px`;
+            chip.style.zIndex = i;
+            this.el.querySelector('.stack-column').appendChild(chip);
+            this.chips[i] = chip;
+            if (animated) setTimeout(() => chip.classList.add('visible'), i * 30);
+            else chip.classList.add('visible');
+          }
+          _remove(i, animated) {
+            const chip = this.chips[i]; if (!chip) return;
+            if (animated) {
+              chip.classList.add('removing');
+              setTimeout(() => chip.parentNode && chip.parentNode.removeChild(chip), 400);
+            } else {
+              chip.parentNode && chip.parentNode.removeChild(chip);
+            }
+            this.chips[i] = null;
+          }
+        }
+        
+        const CHIP_COLORS = ['blue','red','green','purple','orange','blue','red','green'];
+        /* Choose how cash → chip units is computed. We keep it simple & stable:
+           - Make ~100–160 visible “chip units” at each player’s starting stack
+           - Scale linearly with stack growth/decline so animations remain informative */
+        function compute_denominator(initialCash) {
+          // Make ~120 chips at start: denom ≈ initialCash / 120 (≥1)
+          return Math.max(1, Math.round(initialCash / 120));
+        }
+        
+        function ensureChipStacksForPlayer(player, index) {
+          const card = document.getElementById(`player-${index}`);
+          if (!card) return;
+        
+          const color = CHIP_COLORS[index % CHIP_COLORS.length];
+          const name = player.name;
+        
+          // existing UI record?
+          let ui = playerChipUI.get(name);
+        
+          // compute (or keep) denom
+          const denom = ui?.denom ?? compute_denominator(initialChips.get(name) || player.chips || 1);
+        
+          // helper to distribute totalUnits over N stacks
+          const splitUnits = (totalUnits, n) => {
+            const per = Math.floor(totalUnits / n);
+            const rem = totalUnits % n;
+            return Array.from({ length: n }, (_, i) => per + (i < rem ? 1 : 0));
+          };
+        
+          // find fresh DOM nodes
+          const grid = card.querySelector('.stacks-grid');
+          const stackEls = grid ? grid.querySelectorAll('.chip-stack') : [];
+          const deltaEl = document.getElementById(`delta-${index}`);
+          if (!stackEls.length) return;
+        
+          if (!ui) {
+            // first time: create stacks AND prime to current (no animation)
+            const stacks = Array.from(stackEls, el => new ChipStack(el, color));
+            const totalUnitsNow = Math.floor((player.chips || 0) / denom);
+            const parts = splitUnits(totalUnitsNow, stacks.length);
+            stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
+            playerChipUI.set(name, { stacks, color, denom, prevCash: player.chips ?? 0, deltaEl });
+            return;
+          }
+        
+          // ui exists: if old DOM disconnected, rebind but keep prior counts
+          if (!ui.stacks.length || !ui.stacks[0].el.isConnected) {
+            const prevCash = ui.prevCash ?? player.chips ?? 0;
+            const prevUnits = Math.floor(prevCash / denom);
+        
+            const stacks = Array.from(stackEls, el => new ChipStack(el, color));
+            const parts = splitUnits(prevUnits, stacks.length);
+            stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
+        
+            // update references, keep prevCash & denom
+            ui.stacks = stacks;
+            ui.deltaEl = deltaEl;
+            ui.color = color;
+            ui.denom = denom;
+            playerChipUI.set(name, ui);
+            return;
+          }
+        
+          // ui exists and DOM still connected: nothing to do
+        }
+
+
+        
+        function updateChipStacks(state) {
+          if (!state?.players) return;
+          state.players.forEach((p, idx) => {
+            ensureChipStacksForPlayer(p, idx);
+            const ui = playerChipUI.get(p.name);
+            if (!ui) return;
+        
+            // Convert cash → total chip units across 4 stacks
+            const totalUnits = Math.floor((p.chips || 0) / ui.denom);
+            const perStack = Math.floor(totalUnits / ui.stacks.length);
+            const rem = totalUnits % ui.stacks.length;
+        
+            ui.stacks.forEach((stack, i) => {
+              const units = perStack + (i < rem ? 1 : 0);
+              stack.setChipCount(units, /*animated*/ true);
+            });
+        
+            // Delta pill
+            const prev = ui.prevCash;
+            if (ui.deltaEl && prev !== null && prev !== p.chips) {
+              const delta = p.chips - prev;
+              ui.deltaEl.textContent = `${delta >= 0 ? '+' : ''}$${delta.toLocaleString()}`;
+              ui.deltaEl.classList.toggle('neg', delta < 0);
+              ui.deltaEl.classList.add('show');
+              setTimeout(() => ui.deltaEl.classList.remove('show'), 1200);
+            }
+            ui.prevCash = p.chips;
+          });
+        }
+
 
         function updateDisplay(state) {
             if (!state || state.error) {
@@ -797,8 +1018,17 @@
                 });
             }
             
+            // Record initial stacks exactly once (for stable chip scaling)
+            if (initialChips.size === 0 && state?.players) {
+              state.players.forEach(p => initialChips.set(p.name, p.chips || 0));
+            }
+            
+            
             ensureInitials(state);
             updateBars(state);
+            
+            // NEW: drive chip stacks from real chip counts
+            updateChipStacks(state);
             
             // *** REPLACE ONLY THIS SECTION BELOW ***
             const startBtn = document.getElementById('startHandBtn');
