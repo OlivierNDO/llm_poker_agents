@@ -1,44 +1,51 @@
 game:
   small_blind: 1
-  big_blind: 2
+  big_blind: 1
   max_hands: 100
   max_hands_per_session: 500
-  llm_call_delay: 0.5
+  llm_call_delay: 0.15
 
 players:
-  - name: "Gpt 4o"
+  - name: "player 1"
     model: "openai/chatgpt-4o-latest"
-    chips: 250
+    chips: 300
     enabled: true
-    
+
+  - name: "player 2"
+    model: "openai/chatgpt-4o-latest"
+    chips: 4
+    enabled: true
+
+  - name: "player 3"
+    model: "openai/chatgpt-4o-latest"
+    chips: 4
+    enabled: true
+
   - name: "Llama 3.3 70B"
     model: "meta-llama/llama-3.3-70b-instruct"
     chips: 250
-    enabled: true
-    
+    enabled: false
+
   - name: "Claude 3.5 Sonnet"
     model: "anthropic/claude-3.5-sonnet"
     chips: 250
-    enabled: true
-    
-    
-    
-    
+    enabled: false
+
   - name: "Claude 3 Haiku"
     model: "anthropic/claude-3-haiku"
     chips: 250
     enabled: false
-    
+
   - name: "Gpt 4.1 Nano"
     model: "openai/gpt-4.1-nano"
     chips: 250
     enabled: false
- 
+
   - name: "Llama 3.1 405B"
     model: "meta-llama/llama-3.1-405b-instruct:free"
     chips: 250
     enabled: false
-    
+
   - name: "Claude Sonnet 4"
     model: "anthropic/claude-sonnet-4"
     chips: 250
@@ -58,7 +65,3 @@ players:
     model: "openai/gpt-5"
     chips: 250
     enabled: false
-
-  
-
-

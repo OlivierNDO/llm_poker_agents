@@ -200,7 +200,7 @@ class PokerGameServer:
                 ordered.append(self.players[idx])
         return ordered
     
-    def _get_dealer_position_in_hand(self, hand_players):
+    def DEPRECATED_get_dealer_position_in_hand(self, hand_players):
         """Get dealer position within the hand's player list"""
         if len(hand_players) == 2:
             # For heads-up, find which position the dealer is in
@@ -210,6 +210,19 @@ class PokerGameServer:
             return 0
         else:
             # For 3+, dealer is always at position 0 in our ordering
+            return 0
+        
+    def _get_dealer_position_in_hand(self, hand_players):
+        """Get dealer position within the hand's player list"""
+        if len(hand_players) == 2:
+            # For heads-up, find which position the actual dealer occupies
+            dealer_player = self.players[self.dealer_position]
+            for i, player in enumerate(hand_players):
+                if player is dealer_player:
+                    return i
+            return 0  # fallback
+        else:
+            # For 3+ players, dealer is always at position 0 due to ordering
             return 0
     
     def _advance_dealer_button(self):
