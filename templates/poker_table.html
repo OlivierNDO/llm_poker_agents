@@ -602,6 +602,9 @@
         <div class="controls">
             <button class="btn" id="startHandBtn" onclick="startNewHand()">Start New Hand</button>
             <button class="btn" id="nextActionBtn" onclick="nextAction()" style="display: none;">Next Action</button>
+            <!-- auto play -->
+            <button class="btn" id="autoPlayBtn" onclick="autoPlay()" style="display: none;">Auto Play</button>
+            <button class="btn" id="stopAutoBtn" onclick="stopAutoPlay()" style="display: none;">Stop</button>
             <button class="btn" id="resetGameBtn" onclick="resetGame()">Reset Game</button>
         </div>
 
@@ -618,6 +621,8 @@
         let gameState = null;
         let actionLog = [];
         let isProcessing = false;
+        let isAutoPlaying = false;
+        let autoPlayInterval = null;
 
         function createCard(cardStr, isBoard = false) {
             const card = document.createElement('div');
@@ -753,11 +758,11 @@
                 showError(state?.error || "Failed to load game state");
                 return;
             }
-
+            
             gameState = state;
             hideError();
             hideLoading();
-
+            
             if (state.players && state.players.length > 0) {
                 const startingChips = state.players[0].chips;
                 const numPlayers = state.players.length;
@@ -767,9 +772,9 @@
                 document.documentElement.style
                     .setProperty('--chip-count-width', chipBoxWidth + 'px');
             }
-
+            
             animateNumber(document.getElementById('potAmount'), state.pot || 0);
-
+            
             const boardContainer = document.getElementById('boardCards');
             boardContainer.innerHTML = '';
             const boardCards = state.board || [];
@@ -781,7 +786,7 @@
                     boardContainer.appendChild(createCard('', true));
                 }
             }
-
+            
             const playersGrid = document.getElementById('playersGrid');
             playersGrid.innerHTML = '';
             if (state.players) {
@@ -791,19 +796,33 @@
                     playersGrid.appendChild(playerCard);
                 });
             }
-
+            
             ensureInitials(state);
             updateBars(state);
-
+            
+            // *** REPLACE ONLY THIS SECTION BELOW ***
             const startBtn = document.getElementById('startHandBtn');
             const nextBtn = document.getElementById('nextActionBtn');
+            const autoBtn = document.getElementById('autoPlayBtn');
+            const stopBtn = document.getElementById('stopAutoBtn');
+            
             if (state.isComplete) {
                 startBtn.style.display = 'inline-block';
                 startBtn.textContent = 'Start New Hand';
                 nextBtn.style.display = 'none';
+                autoBtn.style.display = 'none';
+                stopBtn.style.display = 'none';
             } else if (state.phase && state.phase !== 'Ready to Start') {
                 startBtn.style.display = 'none';
-                nextBtn.style.display = 'inline-block';
+                if (isAutoPlaying) {
+                    nextBtn.style.display = 'none';
+                    autoBtn.style.display = 'none';
+                    stopBtn.style.display = 'inline-block';
+                } else {
+                    nextBtn.style.display = 'inline-block';
+                    autoBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                }
             }
         }
 
@@ -812,8 +831,10 @@
             if (loadingEl) loadingEl.style.display = 'block';
             const nextBtn = document.getElementById('nextActionBtn');
             const startBtn = document.getElementById('startHandBtn');
+            const autoBtn = document.getElementById('autoPlayBtn');
             if (nextBtn) nextBtn.disabled = true;
             if (startBtn) startBtn.disabled = true;
+            if (autoBtn) autoBtn.disabled = true;
         }
         
         function hideLoading() {
@@ -821,8 +842,10 @@
             if (loadingEl) loadingEl.style.display = 'none';
             const nextBtn = document.getElementById('nextActionBtn');
             const startBtn = document.getElementById('startHandBtn');
+            const autoBtn = document.getElementById('autoPlayBtn');
             if (nextBtn) nextBtn.disabled = false;
             if (startBtn) startBtn.disabled = false;
+            if (autoBtn) autoBtn.disabled = false;
         }
 
         function showError(message) {
@@ -833,6 +856,107 @@
 
         function hideError() {
             document.getElementById('errorMessage').style.display = 'none';
+        }
+        
+        async function autoPlay() {
+            if (isAutoPlaying) return;
+            
+            isAutoPlaying = true;
+            updateDisplay(gameState); // Refresh buttons
+            addLogEntry("Auto play started - running until completion");
+            
+            try {
+                while (isAutoPlaying && gameState && !gameState.isComplete) {
+                    // Use the existing next action endpoint
+                    const response = await fetch('/api/game/next', {
+                        method: 'POST'
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+                    
+                    // Update display with each step
+                    if (result.game_state) {
+                        updateDisplay(result.game_state);
+                        gameState = result.game_state;
+                    }
+                    
+                    // Log the step
+                    if (result.step_result) {
+                        addLogEntry(result.step_result);
+                    }
+                    
+                    // Check if hand is complete
+                    if (result.complete) {
+                        addLogEntry("Hand complete!");
+                        
+                        // Check if game should continue (more than 1 player with chips)
+                        const activePlayers = gameState.players.filter(p => p.chips > 0);
+                        if (activePlayers.length <= 1) {
+                            addLogEntry("Game completed! Winner determined.");
+                            stopAutoPlay();
+                            break;
+                        }
+                        
+                        // Start next hand
+                        const nextHandResponse = await fetch('/api/game/start', {
+                            method: 'POST'
+                        });
+                        
+                        if (nextHandResponse.ok) {
+                            const nextHandResult = await nextHandResponse.json();
+                            // 8/29
+                            if (nextHandResult.error) {
+                              addLogEntry(nextHandResult.error);
+                              // optionally surface a toast
+                              showError(nextHandResult.error);
+                              stopAutoPlay();
+                              break;
+                            }
+                            // 8/29
+                            updateDisplay(nextHandResult);
+                            gameState = nextHandResult;
+                            addLogEntry("New hand started");
+                        } else {
+                            stopAutoPlay();
+                            break;
+                        }
+                    }
+                    
+                    // Small delay to see the updates
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                if (isAutoPlaying) {
+                    addLogEntry("Auto play completed");
+                    stopAutoPlay();
+                }
+                
+            } catch (error) {
+                console.error('Error during auto play:', error);
+                showError(`Auto play failed: ${error.message}`);
+                stopAutoPlay();
+            }
+        }
+        
+        function stopAutoPlay() {
+            if (!isAutoPlaying) return;
+            
+            isAutoPlaying = false;
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+            }
+            
+            updateDisplay(gameState); // Refresh buttons
+            addLogEntry("Auto play stopped");
         }
 
         function addLogEntry(message) {
@@ -869,6 +993,14 @@
                 }
                 
                 const result = await response.json();
+                // 8/29
+                if (result.error) {
+                  showError(result.error);
+                  addLogEntry(result.error);
+                  hideLoading();
+                  return;
+                }
+                // 8/29
                 updateDisplay(result);
                 addLogEntry("New hand started - cards dealt");
                 
@@ -918,6 +1050,9 @@
             showLoading();
             addLogEntry("Resetting game...");
             
+            // Stop auto play if it's running
+            stopAutoPlay();
+            
             try {
                 const response = await fetch('/api/game/reset', {
                     method: 'POST'
@@ -938,6 +1073,8 @@
                 document.getElementById('startHandBtn').style.display = 'inline-block';
                 document.getElementById('startHandBtn').textContent = 'Start New Hand';
                 document.getElementById('nextActionBtn').style.display = 'none';
+                document.getElementById('autoPlayBtn').style.display = 'none';
+                document.getElementById('stopAutoBtn').style.display = 'none';
                 
                 hideError();
                 hideLoading();

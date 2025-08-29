@@ -1,6 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 import json
+import os
 from threading import Lock
+import yaml
+
 from src.game import Hand, Player, TableConfig, StatsTracker, TableManager, Action, ActionType
 from src.agents import LLMAgent, RandomAgent
 from src.agent_utils import OpenRouterCompletionEngine
@@ -8,18 +11,59 @@ from src.logging_config import logger
 app = Flask(__name__)
 game_lock = Lock()
 
+
+with open('config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f) or {}
+    
+
 class PokerGameServer:
     def __init__(self):
+        self.cfg = config
+        game_cfg = self.cfg.get('game', {})
         self.current_hand = None
         self.stats_tracker = StatsTracker()
-        self.config = TableConfig(small_blind=1, big_blind=2, max_hands=1)
+        #self.config = TableConfig(small_blind=1, big_blind=2, max_hands=5)
+        self.config = TableConfig(
+            small_blind=int(game_cfg.get('small_blind', 1)),
+            big_blind=int(game_cfg.get('big_blind', 2)),
+            max_hands=int(game_cfg.get('max_hands', 5))
+        )
         self.players = []
         self.table_manager = None
         self.hand_no = 0
         self.dealer_position = 0  # Track dealer position ourselves
         self.setup_players()
-    
+        
+        
     def setup_players(self):
+        """
+        Initialize players from YAML config.
+        """
+        self.players = []
+        players_cfg = self.cfg.get('players', [])
+        for p in players_cfg:
+            if not p.get('enabled', True):
+                continue
+            name = str(p.get('name', 'Player'))
+            model_id = str(p.get('model', ''))
+            chips = int(p.get('chips', 250))
+            client = OpenRouterCompletionEngine(model=model_id)
+            agent = LLMAgent(
+                client=client,
+                name=name,
+                table_config=self.config,
+                logger=logger
+            )
+            self.players.append(
+                Player(
+                    name=name,
+                    chips=chips,
+                    agent=agent
+                )
+            )
+
+    
+    def DEPRECATED_setup_players(self):
         """Initialize players with agents"""
         # Create your LLM clients
         
@@ -238,6 +282,15 @@ class PokerGameServer:
     
     def start_new_hand(self):
         """Start a new hand with proper dealer rotation"""
+        # 8/29
+        if getattr(self.config, 'max_hands', 0) and self.hand_no >= int(self.config.max_hands):
+            return {
+                'error': 'Max hands reached',
+                'complete': True,
+                'handsPlayed': self.hand_no,
+                'maxHands': int(self.config.max_hands),
+                'game_state': self.get_game_state() if self.current_hand else {}
+            }
         logger.info(f"Starting new hand #{self.hand_no + 1}")
         
         # Get active players in correct seating order
@@ -279,6 +332,95 @@ class PokerGameServer:
         self.hand_no += 1
         
         return self.get_game_state()
+
+
+    def auto_play_until_completion(self):
+        """Run the game until completion (max hands or one winner)"""
+        logger.info("Starting auto play until completion")
+        
+        if not self.current_hand:
+            return {"error": "No active hand"}
+        
+        log_entries = []
+        hands_played = 0
+        max_hands_per_session = int(self.cfg.get('game', {}).get('max_hands_per_session', 500))
+        
+        try:
+            while hands_played < max_hands_per_session:
+                # Complete current hand if it exists and isn't finished
+                if self.current_hand and not self.current_hand.is_complete:
+                    logger.info(f"Completing current hand (hand #{self.hand_no})")
+                    
+                    while not self.current_hand.is_complete:
+                        step_result = self.current_hand.execute_next_step()
+                        if step_result:
+                            log_entries.append(f"Hand #{self.hand_no}: {step_result}")
+                    
+                    # Advance dealer button after hand completion
+                    if self.current_hand.is_complete:
+                        self._advance_dealer_button()
+                        log_entries.append(f"Hand #{self.hand_no} complete")
+                
+                # Check max hands limit BEFORE starting next hand
+                if hasattr(self.config, 'max_hands') and self.config.max_hands > 0:
+                    if self.hand_no >= self.config.max_hands:
+                        log_entries.append(f"Reached maximum hands limit ({self.config.max_hands})")
+                        logger.info(f"Reached max hands limit: {self.config.max_hands}")
+                        return {
+                            "complete": True,
+                            "game_state": self.get_game_state(),
+                            "log_entries": log_entries,
+                            "reason": "Max hands reached"
+                        }
+                
+                # Check win condition - only one player with chips
+                active_players = [p for p in self.players if p.chips > 0]
+                if len(active_players) <= 1:
+                    winner_name = active_players[0].name if active_players else "No winner"
+                    log_entries.append(f"Game over! Winner: {winner_name}")
+                    logger.info(f"Game completed - Winner: {winner_name}")
+                    return {
+                        "complete": True,
+                        "game_state": self.get_game_state(),
+                        "log_entries": log_entries,
+                        "winner": winner_name
+                    }
+                
+                # Start next hand
+                logger.info(f"Starting hand #{self.hand_no + 1}")
+                next_hand_result = self.start_new_hand()
+                
+                if "error" in next_hand_result:
+                    log_entries.append(f"Error starting new hand: {next_hand_result['error']}")
+                    return {
+                        "complete": True,
+                        "game_state": self.get_game_state(),
+                        "log_entries": log_entries,
+                        "error": next_hand_result["error"]
+                    }
+                
+                hands_played += 1
+                log_entries.append(f"Started hand #{self.hand_no}")
+            
+            # Safety limit reached
+            log_entries.append(f"Reached safety limit of {max_hands_per_session} hands")
+            return {
+                "complete": True,
+                "game_state": self.get_game_state(),
+                "log_entries": log_entries,
+                "reason": "Safety limit reached"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during auto play: {e}", exc_info=True)
+            log_entries.append(f"Error during auto play: {str(e)}")
+            return {
+                "complete": True,
+                "game_state": self.get_game_state(),
+                "log_entries": log_entries,
+                "error": str(e)
+            }
+
     
     def execute_next_action(self):
         """Execute the next step in the current hand"""
@@ -370,6 +512,11 @@ class PokerGameServer:
                         cleaned_reasons.append(reason)
                     reasoning = " ".join(cleaned_reasons)
             
+            
+            hand_str = str(player.hand_name) if player.hand_name is not None else None
+            if hand_str and ':' in hand_str:
+                hand_str = hand_str.split(':', 1)[0].strip()
+            
             players_data.append({
                 "name": player.name,
                 "chips": player.chips,
@@ -396,7 +543,10 @@ class PokerGameServer:
             "currentPlayerName": current_player.name if current_player else None,
             "dealerIndex": self.current_hand.game_state.dealer_position,
             "players": players_data,
-            "isComplete": self.current_hand.is_complete
+            "isComplete": self.current_hand.is_complete,
+            # 8/29
+            'handsPlayed': self.hand_no,
+            'maxHands': int(getattr(self.config, 'max_hands', 0) or 0)
         }
 
 # Global game instance
@@ -438,6 +588,18 @@ def next_action():
             return jsonify(result)
         except Exception as e:
             logger.error(f"API: Error in next_action: {e}", exc_info=True)
+            return jsonify({"error": str(e)})
+        
+@app.route('/api/game/auto-play', methods=['POST'])
+def auto_play():
+    """Run the game until completion"""
+    with game_lock:
+        logger.info("API: auto_play called")
+        try:
+            result = poker_game.auto_play_until_completion()
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"API: Error in auto_play: {e}", exc_info=True)
             return jsonify({"error": str(e)})
 
 @app.route('/api/game/reset', methods=['POST'])

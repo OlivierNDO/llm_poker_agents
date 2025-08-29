@@ -8,7 +8,9 @@ import os
 from dotenv import load_dotenv
 import numpy as np
 import requests
+import time
 from typing import List, TYPE_CHECKING
+import yaml
 
 from src.core_poker_mechanics import Card
 from src.poker_types import ActionType
@@ -18,6 +20,9 @@ if TYPE_CHECKING:
     from src.game import GameState, Player, TableConfig
 
 load_dotenv()
+
+with open('config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f) or {}
 
 class BetSizingAnalyzer:
     """
@@ -374,6 +379,8 @@ class OpenRouterCompletionEngine:
         self.model = model
         self.token = token
         self.url = url
+        game_cfg = config.get('game', {}) if isinstance(config, dict) else {}
+        self.delay = float(game_cfg.get('llm_call_delay', 0.0))
 
     def submit_prompt(self, prompt: str, max_tokens: int | None = 40000, temperature: float = 0.7):
         payload = {
@@ -397,6 +404,9 @@ class OpenRouterCompletionEngine:
                 logger.error(f"OpenRouter API error: Status {response.status_code}")
                 logger.error(f"Response: {response.text}")
                 return None
+            
+            if self.delay > 0:
+                time.sleep(self.delay)
                 
             return response.json()
             
