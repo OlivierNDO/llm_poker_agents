@@ -1265,47 +1265,26 @@ class TableManager:
 
     def _current_active_seating(self) -> List[Player]:
         """
-        Build the in-hand seating list with proper button positioning.
-        For heads-up, maintain consistent player positions.
+        Get players with chips > 0 in their original table positions.
+        DO NOT reorder players - this breaks blind logic and visual consistency.
         """
-        funded = [p for p in self.players if p.chips > 0]
-        if len(funded) <= 1:
-            return funded
-        
-        # For heads-up, maintain table order but track button position
-        if len(funded) == 2:
-            # Keep players in their original table positions
-            return funded
-        
-        # For 3+ players, order from button
-        ordered: List[Player] = []
-        n = len(self.players)
-        for offset in range(n):
-            idx = (self.dealer_index + offset) % n
-            if self.players[idx].chips > 0:
-                ordered.append(self.players[idx])
-        return ordered
+        return [p for p in self.players if p.chips > 0]
     
     def _dealer_pos_in_active(self, active: List[Player]) -> int:
         """
-        Compute dealer position within the `active` list.
-        For heads-up, alternate between players; for 3+ players,
-        the dealer is always seat 0 in active seating.
+        Find the dealer's position within the active players list.
+        Since active maintains original table order, we just need to find
+        which active player is the current dealer.
         """
-        if len(active) == 2:
-            # Map table dealer_index to the correct seat in active[]
-            # active is built starting from dealer_index, so dealer may be at 0 or 1
-            for i, p in enumerate(active):
-                if self.players[self.dealer_index] is p:
-                    return i
-            return 0  # fallback
-        else:
-            # With 3+, construction guarantees dealer at position 0
-            return 0
+        dealer_player = self.players[self.dealer_index]
+        for i, player in enumerate(active):
+            if player is dealer_player:
+                return i
+        return 0  # fallback
     
     def _post_blinds(self, hand: Hand) -> None:
         """
-        Post small blind and big blind into the hand's GameState before preflop actions.
+        Post small blind and big blind with correct position logic.
         """
         gs: GameState = hand.game_state
         players = gs.players
@@ -1315,41 +1294,38 @@ class TableManager:
         
         dealer_pos = gs.dealer_position
         
+        self.logger.info(f"DEBUG: Players list order: {[p.name for p in players]}")
+        self.logger.info(f"DEBUG: dealer_pos = {dealer_pos}")
+        self.logger.info(f"DEBUG: players[{dealer_pos}] = {players[dealer_pos].name}")
+            
         if n == 2:
             # Heads-up: Dealer posts SB, other player posts BB
             sb_index = dealer_pos
-            bb_index = 1 - dealer_pos  # The other player
-            first_to_act = dealer_pos  # Dealer/SB acts first preflop heads-up
-        elif n == 3:
-            sb_index = (dealer_pos + 1) % n
-            bb_index = (dealer_pos + 2) % n
-            first_to_act = dealer_pos  # In 3-player, dealer acts first after blinds
+            bb_index = 1 - dealer_pos
+            first_to_act = dealer_pos
         else:
-            # 3+ players: standard positions relative to dealer
+            # 3+ players: standard positions
             sb_index = (dealer_pos + 1) % n
-            bb_index = (dealer_pos + 2) % n
-            first_to_act = (dealer_pos + 3) % n  # UTG
+            bb_index = (dealer_pos + 2) % n 
+            first_to_act = (dealer_pos + 3) % n if n > 3 else dealer_pos
             
         self.logger.info(
-            f"Dealer: {self.players[self.dealer_index].name} "
-            f"(SB={self.players[sb_index].name}, BB={self.players[bb_index].name}), "
-            f"First to act preflop: {self.players[first_to_act].name}"
+            f"Posting blinds: Dealer={players[dealer_pos].name} (pos {dealer_pos}), "
+            f"SB={players[sb_index].name} (pos {sb_index}), "
+            f"BB={players[bb_index].name} (pos {bb_index})"
         )
-
         
         # Post SB
         sb_player = players[sb_index]
         sb_amt = min(self.config.small_blind, sb_player.chips)
-        sb_action = Action(ActionType.BET, sb_amt, reasons=["small_blind"])
+        sb_action = Action(ActionType.BET, sb_amt, reasons=[f"Small blind of {sb_amt} is required."])
         gs.apply_action(sb_player, sb_action)
-        gs.blind_actions.append(len(gs.action_history) - 1)  # Record SB action index
         
         # Post BB
         bb_player = players[bb_index]
         bb_amt = min(self.config.big_blind, bb_player.chips)
-        bb_action = Action(ActionType.BET, bb_amt, reasons=["big_blind"])
+        bb_action = Action(ActionType.BET, bb_amt, reasons=[f"Big blind of {bb_amt} is required."])
         gs.apply_action(bb_player, bb_action)
-        gs.blind_actions.append(len(gs.action_history) - 1)  # Record BB action index
         
         # Set current bet to the big blind amount
         gs.current_bet = bb_amt
@@ -1357,14 +1333,14 @@ class TableManager:
         # Set first player to act
         gs.current_player_index = first_to_act
         gs.betting_round = 0
-
-    def _find_next_funded_in_hand(self, players: List[Player], start_index: int) -> int:
-        """Find next index (cyclic) with chips > 0 among the already-seated `players` list."""
-        n = len(players)
-        for i in range(1, n + 1):
-            idx = (start_index + i) % n
-            if players[idx].chips > 0:
-                return idx
-        return start_index
+    
+        def _find_next_funded_in_hand(self, players: List[Player], start_index: int) -> int:
+            """Find next index (cyclic) with chips > 0 among the already-seated `players` list."""
+            n = len(players)
+            for i in range(1, n + 1):
+                idx = (start_index + i) % n
+                if players[idx].chips > 0:
+                    return idx
+            return start_index
     
     

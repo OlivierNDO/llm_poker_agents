@@ -1,7 +1,7 @@
 game:
   small_blind: 1
-  big_blind: 1
-  max_hands: 100
+  big_blind: 2
+  max_hands: 4
   max_hands_per_session: 500
   llm_call_delay: 0.15
 
@@ -13,14 +13,25 @@ players:
 
   - name: "player 2"
     model: "openai/chatgpt-4o-latest"
-    chips: 4
+    chips: 300
     enabled: true
 
   - name: "player 3"
     model: "openai/chatgpt-4o-latest"
-    chips: 4
+    chips: 300
     enabled: true
+    
+  - name: "player 4"
+    model: "openai/chatgpt-4o-latest"
+    chips: 300
+    enabled: false
+    
+  - name: "player 5"
+    model: "openai/chatgpt-4o-latest"
+    chips: 300
+    enabled: false    
 
+    
   - name: "Llama 3.3 70B"
     model: "meta-llama/llama-3.3-70b-instruct"
     chips: 250

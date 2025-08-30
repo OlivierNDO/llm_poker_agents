@@ -150,19 +150,26 @@
 
         /* Thinking animation */
         .player-card.thinking {
-            animation: glassThinking 2s ease-in-out infinite;
+            animation: glassThinking 1.2s ease-in-out infinite;
         }
 
         @keyframes glassThinking {
             0%, 100% { 
+                background: rgba(255, 255, 255, 0.08);
+                border-color: rgba(255, 255, 255, 0.3);
                 box-shadow: 
                     0 8px 32px rgba(31, 38, 135, 0.37),
                     inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                transform: scale(1);
             }
             50% { 
+                background: rgba(59, 130, 246, 0.12);
+                border-color: rgba(59, 130, 246, 0.8);
                 box-shadow: 
+                    0 0 25px rgba(59, 130, 246, 0.7),
                     0 12px 40px rgba(31, 38, 135, 0.5),
                     inset 0 1px 0 rgba(255, 255, 255, 0.6);
+                transform: scale(1.01);
             }
         }
 
@@ -182,7 +189,7 @@
         .player-name {
             font-weight: bold;
             font-size: 18px;
-            color: #1e40af;
+            /*color: #1e40af;*/
             text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
@@ -820,6 +827,19 @@
             }
         }
         
+        // Use a single denominator for all players to ensure consistent scaling
+        function getGlobalChipDenominator() {
+            if (initialChips.size === 0) return 1;
+            
+            // Use the typical starting stack to compute denominator
+            // This ensures all players with same starting chips have same visual scaling
+            const startingStacks = [...initialChips.values()];
+            const typicalStack = Math.max(...startingStacks); // Use largest starting stack as reference
+            
+            // Make ~120 chips at the reference stack size
+            return Math.max(1, Math.round(typicalStack / 120));
+        }
+        
         function updateBars(state) {
            const potFill = document.getElementById('potBarFill');
            if (potFill && totalInitialChips > 0) {
@@ -875,7 +895,7 @@
           }
         }
         
-        const CHIP_COLORS = ['blue','red','green','purple','orange','blue','red','green'];
+        const CHIP_COLORS = ['blue','red','green','purple','orange','yellow','cyan','pink','lime','magenta'];
         /* Choose how cash → chip units is computed. We keep it simple & stable:
            - Make ~100–160 visible “chip units” at each player’s starting stack
            - Scale linearly with stack growth/decline so animations remain informative */
@@ -884,61 +904,86 @@
           return Math.max(1, Math.round(initialCash / 120));
         }
         
+        
+        function getChipColorHex(colorName) {
+            const colorMap = {
+                'blue': '#3b82f6',
+                'red': '#ef4444', 
+                'green': '#22c55e',
+                'purple': '#a855f7',
+                'orange': '#f97316',
+                'yellow': '#eab308',
+                'cyan': '#06b6d4',
+                'pink': '#ec4899',
+                'lime': '#84cc16',
+                'magenta': '#d946ef'
+            };
+            return colorMap[colorName] || '#1e40af'; // fallback to default blue
+        }
+                
+        
         function ensureChipStacksForPlayer(player, index) {
-          const card = document.getElementById(`player-${index}`);
-          if (!card) return;
+            const card = document.getElementById(`player-${index}`);
+            if (!card) return;
         
-          const color = CHIP_COLORS[index % CHIP_COLORS.length];
-          const name = player.name;
+            const color = CHIP_COLORS[index % CHIP_COLORS.length];
+            const name = player.name;
+            
+            // Apply the chip color to the player name
+            const nameElement = card.querySelector('.player-name');
+            if (nameElement) {
+                nameElement.style.color = getChipColorHex(color);
+            }
         
-          // existing UI record?
-          let ui = playerChipUI.get(name);
+            // Use GLOBAL denominator for all players
+            const denom = getGlobalChipDenominator();
+            
+            let ui = playerChipUI.get(name);
         
-          // compute (or keep) denom
-          const denom = ui?.denom ?? compute_denominator(initialChips.get(name) || player.chips || 1);
+            // Helper to distribute totalUnits over N stacks
+            const splitUnits = (totalUnits, n) => {
+                const per = Math.floor(totalUnits / n);
+                const rem = totalUnits % n;
+                return Array.from({ length: n }, (_, i) => per + (i < rem ? 1 : 0));
+            };
         
-          // helper to distribute totalUnits over N stacks
-          const splitUnits = (totalUnits, n) => {
-            const per = Math.floor(totalUnits / n);
-            const rem = totalUnits % n;
-            return Array.from({ length: n }, (_, i) => per + (i < rem ? 1 : 0));
-          };
+            // Find fresh DOM nodes
+            const grid = card.querySelector('.stacks-grid');
+            const stackEls = grid ? grid.querySelectorAll('.chip-stack') : [];
+            const deltaEl = document.getElementById(`delta-${index}`);
+            if (!stackEls.length) return;
         
-          // find fresh DOM nodes
-          const grid = card.querySelector('.stacks-grid');
-          const stackEls = grid ? grid.querySelectorAll('.chip-stack') : [];
-          const deltaEl = document.getElementById(`delta-${index}`);
-          if (!stackEls.length) return;
+            if (!ui) {
+                // First time: create stacks AND prime to current (no animation)
+                const stacks = Array.from(stackEls, el => new ChipStack(el, color));
+                const totalUnitsNow = Math.floor((player.chips || 0) / denom);
+                const parts = splitUnits(totalUnitsNow, stacks.length);
+                stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
+                playerChipUI.set(name, { stacks, color, denom, prevCash: player.chips ?? 0, deltaEl });
+                return;
+            }
         
-          if (!ui) {
-            // first time: create stacks AND prime to current (no animation)
-            const stacks = Array.from(stackEls, el => new ChipStack(el, color));
-            const totalUnitsNow = Math.floor((player.chips || 0) / denom);
-            const parts = splitUnits(totalUnitsNow, stacks.length);
-            stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
-            playerChipUI.set(name, { stacks, color, denom, prevCash: player.chips ?? 0, deltaEl });
-            return;
-          }
+            // UI exists: if old DOM disconnected, rebind but keep prior counts
+            if (!ui.stacks.length || !ui.stacks[0].el.isConnected) {
+                const prevCash = ui.prevCash ?? player.chips ?? 0;
+                const prevUnits = Math.floor(prevCash / denom);
         
-          // ui exists: if old DOM disconnected, rebind but keep prior counts
-          if (!ui.stacks.length || !ui.stacks[0].el.isConnected) {
-            const prevCash = ui.prevCash ?? player.chips ?? 0;
-            const prevUnits = Math.floor(prevCash / denom);
+                const stacks = Array.from(stackEls, el => new ChipStack(el, color));
+                const parts = splitUnits(prevUnits, stacks.length);
+                stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
         
-            const stacks = Array.from(stackEls, el => new ChipStack(el, color));
-            const parts = splitUnits(prevUnits, stacks.length);
-            stacks.forEach((stack, i) => stack.setChipCount(parts[i], /*animated*/ false));
+                // Update references, keep prevCash but use GLOBAL denom
+                ui.stacks = stacks;
+                ui.deltaEl = deltaEl;
+                ui.color = color;
+                ui.denom = denom; // Use global denominator
+                ui.prevCash = prevCash;
+                playerChipUI.set(name, ui);
+                return;
+            }
         
-            // update references, keep prevCash & denom
-            ui.stacks = stacks;
-            ui.deltaEl = deltaEl;
-            ui.color = color;
-            ui.denom = denom;
-            playerChipUI.set(name, ui);
-            return;
-          }
-        
-          // ui exists and DOM still connected: nothing to do
+            // UI exists and DOM still connected: update with global denom
+            ui.denom = denom; // Ensure we're using the global denominator
         }
 
 

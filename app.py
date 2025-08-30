@@ -8,21 +8,18 @@ from src.game import Hand, Player, TableConfig, StatsTracker, TableManager, Acti
 from src.agents import LLMAgent, RandomAgent
 from src.agent_utils import OpenRouterCompletionEngine
 from src.logging_config import logger
+
 app = Flask(__name__)
 game_lock = Lock()
 
-
 with open('config.yaml', 'r', encoding='utf-8') as f:
     config = yaml.safe_load(f) or {}
-    
 
 class PokerGameServer:
     def __init__(self):
         self.cfg = config
         game_cfg = self.cfg.get('game', {})
-        self.current_hand = None
         self.stats_tracker = StatsTracker()
-        #self.config = TableConfig(small_blind=1, big_blind=2, max_hands=5)
         self.config = TableConfig(
             small_blind=int(game_cfg.get('small_blind', 1)),
             big_blind=int(game_cfg.get('big_blind', 2)),
@@ -30,15 +27,11 @@ class PokerGameServer:
         )
         self.players = []
         self.table_manager = None
-        self.hand_no = 0
-        self.dealer_position = 0  # Track dealer position ourselves
+        self.current_hand = None
         self.setup_players()
         
-        
     def setup_players(self):
-        """
-        Initialize players from YAML config.
-        """
+        """Initialize players from YAML config."""
         self.players = []
         players_cfg = self.cfg.get('players', [])
         for p in players_cfg:
@@ -61,108 +54,14 @@ class PokerGameServer:
                     agent=agent
                 )
             )
-
-    
-    def DEPRECATED_setup_players(self):
-        """Initialize players with agents"""
-        # Create your LLM clients
         
-        claude_sonnet_4_client = OpenRouterCompletionEngine(model='anthropic/claude-sonnet-4')
-        deepseek_3_1_client = OpenRouterCompletionEngine(model='deepseek/deepseek-chat-v3.1')
-        gemini_2_5_client = OpenRouterCompletionEngine(model='google/gemini-2.5-flash')
-        grok_4_client = OpenRouterCompletionEngine(model='x-ai/grok-4')
-        gpt_5_client = OpenRouterCompletionEngine(model='openai/gpt-5')
-        #gpt4_client = OpenRouterCompletionEngine(model='openai/gpt-4o')
-        #llama_client = OpenRouterCompletionEngine(model='meta-llama/llama-3.3-70b-instruct')
-        #gpt_nano_client = OpenRouterCompletionEngine(model='openai/gpt-4.1-nano')
-        #gemma_client = OpenRouterCompletionEngine(model='google/gemma-3-27b-it:free')
-        #claude_haiku_client = OpenRouterCompletionEngine(model='anthropic/claude-3-haiku')
-        
-        
-        
-        
-        # deepseek/deepseek-chat-v3.1
-        # anthropic/claude-sonnet-4
-        # google/gemma-3-27b-it:free
-        # openai/gpt-4.1-nano
-        
-        
-        
-        
-        self.players = [
-            
-            
-            Player(
-                name='Claude Sonnet 4',
-                chips=250,
-                agent=LLMAgent(
-                    client=claude_sonnet_4_client,
-                    name='Claude Sonnet 4',
-                    table_config=self.config,
-                    logger = logger
-                )
-            ),
-            
-            Player(
-                name='DeepSeek 3.1',
-                chips=250,
-                agent=LLMAgent(
-                    client=deepseek_3_1_client,
-                    name='DeepSeek 3.1',
-                    table_config=self.config,
-                    logger = logger
-                )
-            ),
-            
-            Player(
-                name='Gemini 2.5 Flash',
-                chips=250,
-                agent=LLMAgent(
-                    client=gemini_2_5_client,
-                    name='Gemini 2.5 Flash',
-                    table_config=self.config,
-                    logger = logger
-                )
-            ),
-            
-            #Player(
-            #    name='Grok 4',
-            #    chips=250,
-            #    agent=LLMAgent(
-            #        client=grok_4_client,
-            #        name='Grok 4',
-            #        table_config=self.config,
-            #        logger = logger
-            #    )
-            #),
-            
-            Player(
-                name='Gpt 5',
-                chips=250,
-                agent=LLMAgent(
-                    client=gpt_5_client,
-                    name='Gpt 5',
-                    table_config=self.config,
-                    logger = logger
-                )
-            ),
-            
-            
-            
-
-            
-            #Player(
-            #    name='Gemma 3 27B',
-            #    chips=250,
-            #    agent=LLMAgent(
-            #        client=gemma_client,
-            #        name='Gemma 3 27B', 
-            #        table_config=self.config,
-            #        logger = logger
-            #    )
-            #),
-            
-        ]
+        # Create TableManager
+        self.table_manager = TableManager(
+            players=self.players,
+            config=self.config,
+            stats_tracker=self.stats_tracker,
+            logger=logger
+        )
 
     def _card_to_string(self, card):
         """Convert Card object to string representation like 'As', 'Kd', etc."""
@@ -180,134 +79,24 @@ class PokerGameServer:
         rank_char = rank_map.get(card.rank, str(card.rank))
         suit_char = suit_map.get(card.suit.value, 'c')
         return f"{rank_char}{suit_char}"
-    
-    def _get_active_players_in_order(self):
-        """Get players with chips > 0 in proper seating order starting from dealer"""
-        funded_players = [p for p in self.players if p.chips > 0]
-        if len(funded_players) <= 1:
-            return funded_players
-            
-        # For heads-up, keep original order but track dealer
-        if len(funded_players) == 2:
-            return funded_players
-            
-        # For 3+ players, order starting from dealer position
-        ordered = []
-        n = len(self.players)
-        for offset in range(n):
-            idx = (self.dealer_position + offset) % n
-            if self.players[idx].chips > 0:
-                ordered.append(self.players[idx])
-        return ordered
-    
-    def DEPRECATED_get_dealer_position_in_hand(self, hand_players):
-        """Get dealer position within the hand's player list"""
-        if len(hand_players) == 2:
-            # For heads-up, find which position the dealer is in
-            for i, player in enumerate(hand_players):
-                if self.players[self.dealer_position] is player:
-                    return i
-            return 0
-        else:
-            # For 3+, dealer is always at position 0 in our ordering
-            return 0
-        
-    def _get_dealer_position_in_hand(self, hand_players):
-        """Get dealer position within the hand's player list"""
-        if len(hand_players) == 2:
-            # For heads-up, find which position the actual dealer occupies
-            dealer_player = self.players[self.dealer_position]
-            for i, player in enumerate(hand_players):
-                if player is dealer_player:
-                    return i
-            return 0  # fallback
-        else:
-            # For 3+ players, dealer is always at position 0 due to ordering
-            return 0
-    
-    def _advance_dealer_button(self):
-        """Move dealer button to next funded player"""
-        original_dealer = self.dealer_position
-        n = len(self.players)
-        
-        # Find next player with chips
-        for i in range(1, n + 1):
-            next_idx = (self.dealer_position + i) % n
-            if self.players[next_idx].chips > 0:
-                self.dealer_position = next_idx
-                break
-        
-        print(f"Dealer button moved from position {original_dealer} to {self.dealer_position}")
-    
-    def _post_blinds(self, hand):
-        """Post blinds similar to TableManager._post_blinds"""
-        logger.info("Starting blind posting process")
-        
-        gs = hand.game_state
-        players = gs.players
-        n = len(players)
-        
-        if n < 2:
-            logger.warning("Not enough players to post blinds")
-            return
-            
-        dealer_pos = gs.dealer_position
-        logger.info(f"Dealer position: {dealer_pos}, Total players: {n}")
-        
-        if n == 2:
-            # Heads-up: Dealer posts SB, other posts BB
-            sb_index = dealer_pos
-            bb_index = 1 - dealer_pos
-            first_to_act = dealer_pos
-        else:
-            # 3+ players
-            sb_index = (dealer_pos + 1) % n
-            bb_index = (dealer_pos + 2) % n 
-            first_to_act = (dealer_pos + 3) % n if n > 3 else dealer_pos
-        
-        logger.info(f"SB index: {sb_index}, BB index: {bb_index}, First to act: {first_to_act}")
-        
-        try:
-            # Post small blind
-            sb_player = players[sb_index]
-            sb_amt = min(self.config.small_blind, sb_player.chips)
-            logger.info(f"Posting small blind: {sb_player.name} posts {sb_amt}")
-            sb_action = Action(ActionType.BET, sb_amt, reasons=["Small blind required"])
-            gs.apply_action(sb_player, sb_action)
-            
-            # Post big blind  
-            bb_player = players[bb_index]
-            bb_amt = min(self.config.big_blind, bb_player.chips)
-            logger.info(f"Posting big blind: {bb_player.name} posts {bb_amt}")
-            bb_action = Action(ActionType.BET, bb_amt, reasons=["Big blind required"])
-            gs.apply_action(bb_player, bb_action)
-            
-            # Set game state
-            gs.current_bet = bb_amt
-            gs.current_player_index = first_to_act
-            gs.betting_round = 0
-            
-            logger.info(f"Blinds posted successfully. Current bet: {bb_amt}, First to act: {players[first_to_act].name}")
-            
-        except Exception as e:
-            logger.error(f"Error posting blinds: {e}", exc_info=True)
-            raise
-    
+
     def start_new_hand(self):
-        """Start a new hand with proper dealer rotation"""
-        # 8/29
-        if getattr(self.config, 'max_hands', 0) and self.hand_no >= int(self.config.max_hands):
+        """Start a new hand using TableManager"""
+        # Check max hands limit
+        if (getattr(self.config, 'max_hands', 0) and 
+            self.table_manager.hand_no >= int(self.config.max_hands)):
             return {
                 'error': 'Max hands reached',
                 'complete': True,
-                'handsPlayed': self.hand_no,
+                'handsPlayed': self.table_manager.hand_no,
                 'maxHands': int(self.config.max_hands),
                 'game_state': self.get_game_state() if self.current_hand else {}
             }
-        logger.info(f"Starting new hand #{self.hand_no + 1}")
         
-        # Get active players in correct seating order
-        active_players = self._get_active_players_in_order()
+        logger.info(f"Starting new hand #{self.table_manager.hand_no + 1}")
+        
+        # Get active players
+        active_players = [p for p in self.players if p.chips > 0]
         logger.info(f"Active players: {[p.name for p in active_players]}")
         
         if len(active_players) <= 1:
@@ -323,32 +112,62 @@ class PokerGameServer:
         self.current_hand = Hand(active_players, self.stats_tracker)
         logger.info("Hand object created")
         
-        # Set dealer position in hand
-        dealer_in_hand = self._get_dealer_position_in_hand(active_players)
-        self.current_hand.game_state.dealer_position = dealer_in_hand
-        logger.info(f"Dealer position in hand: {dealer_in_hand}")
-        
-        # Execute setup and deal hole cards
+        # Execute setup and deal hole cards FIRST (this resets GameState)
         logger.info("Executing hand setup...")
-        self.current_hand.execute_next_step()  # setup
+        self.current_hand.execute_next_step()  # setup - this creates new GameState with dealer_position = 0
         logger.info("Dealing hole cards...")
         self.current_hand.execute_next_step()  # deal hole cards
         
-        # Post blinds
+        # NOW set dealer position AFTER setup is complete
+        dealer_player = self.players[self.table_manager.dealer_index]
+        dealer_in_hand = next((i for i, p in enumerate(active_players) if p is dealer_player), 0)
+        self.current_hand.game_state.dealer_position = dealer_in_hand
+        logger.info(f"Dealer position in hand: {dealer_in_hand}")
+        
+        # Post blinds using TableManager
         logger.info("Posting blinds...")
-        self._post_blinds(self.current_hand)
+        self.table_manager._post_blinds(self.current_hand)
         
         # Advance to preflop phase
         self.current_hand.phase = "preflop"
         logger.info("Hand setup complete, phase set to preflop")
         
-        self.hand_no += 1
+        self.table_manager.hand_no += 1
         
         return self.get_game_state()
 
+    def execute_next_action(self):
+        """Execute the next step in the current hand"""
+        if not self.current_hand:
+            logger.error("Attempted to execute action with no active hand")
+            return {"error": "No active hand"}
+            
+        if self.current_hand.is_complete:
+            logger.info("Hand is already complete")
+            return {"error": "Hand is complete"}
+        
+        logger.info(f"Executing next action in phase: {self.current_hand.phase}")
+        
+        try:
+            result = self.current_hand.execute_next_step()
+            logger.info(f"Step result: {result}")
+            
+            # If hand is complete, advance dealer button for next hand
+            if self.current_hand.is_complete:
+                logger.info("Hand completed, advancing dealer button")
+                self.table_manager._advance_button()
+            
+            return {
+                "step_result": result,
+                "game_state": self.get_game_state(),
+                "complete": self.current_hand.is_complete
+            }
+        except Exception as e:
+            logger.error(f"Error executing next action: {e}", exc_info=True)
+            return {"error": f"Failed to execute action: {str(e)}"}
 
     def auto_play_until_completion(self):
-        """Run the game until completion (max hands or one winner)"""
+        """Run the game until completion using TableManager logic"""
         logger.info("Starting auto play until completion")
         
         if not self.current_hand:
@@ -362,21 +181,21 @@ class PokerGameServer:
             while hands_played < max_hands_per_session:
                 # Complete current hand if it exists and isn't finished
                 if self.current_hand and not self.current_hand.is_complete:
-                    logger.info(f"Completing current hand (hand #{self.hand_no})")
+                    logger.info(f"Completing current hand (hand #{self.table_manager.hand_no})")
                     
                     while not self.current_hand.is_complete:
                         step_result = self.current_hand.execute_next_step()
                         if step_result:
-                            log_entries.append(f"Hand #{self.hand_no}: {step_result}")
+                            log_entries.append(f"Hand #{self.table_manager.hand_no}: {step_result}")
                     
                     # Advance dealer button after hand completion
                     if self.current_hand.is_complete:
-                        self._advance_dealer_button()
-                        log_entries.append(f"Hand #{self.hand_no} complete")
+                        self.table_manager._advance_button()
+                        log_entries.append(f"Hand #{self.table_manager.hand_no} complete")
                 
                 # Check max hands limit BEFORE starting next hand
                 if hasattr(self.config, 'max_hands') and self.config.max_hands > 0:
-                    if self.hand_no >= self.config.max_hands:
+                    if self.table_manager.hand_no >= self.config.max_hands:
                         log_entries.append(f"Reached maximum hands limit ({self.config.max_hands})")
                         logger.info(f"Reached max hands limit: {self.config.max_hands}")
                         return {
@@ -400,7 +219,7 @@ class PokerGameServer:
                     }
                 
                 # Start next hand
-                logger.info(f"Starting hand #{self.hand_no + 1}")
+                logger.info(f"Starting hand #{self.table_manager.hand_no + 1}")
                 next_hand_result = self.start_new_hand()
                 
                 if "error" in next_hand_result:
@@ -413,7 +232,7 @@ class PokerGameServer:
                     }
                 
                 hands_played += 1
-                log_entries.append(f"Started hand #{self.hand_no}")
+                log_entries.append(f"Started hand #{self.table_manager.hand_no}")
             
             # Safety limit reached
             log_entries.append(f"Reached safety limit of {max_hands_per_session} hands")
@@ -434,37 +253,6 @@ class PokerGameServer:
                 "error": str(e)
             }
 
-    
-    def execute_next_action(self):
-        """Execute the next step in the current hand"""
-        if not self.current_hand:
-            logger.error("Attempted to execute action with no active hand")
-            return {"error": "No active hand"}
-            
-        if self.current_hand.is_complete:
-            logger.info("Hand is already complete")
-            return {"error": "Hand is complete"}
-        
-        logger.info(f"Executing next action in phase: {self.current_hand.phase}")
-        
-        try:
-            result = self.current_hand.execute_next_step()
-            logger.info(f"Step result: {result}")
-            
-            # If hand is complete, advance dealer button for next hand
-            if self.current_hand.is_complete:
-                logger.info("Hand completed, advancing dealer button")
-                self._advance_dealer_button()
-            
-            return {
-                "step_result": result,
-                "game_state": self.get_game_state(),
-                "complete": self.current_hand.is_complete
-            }
-        except Exception as e:
-            logger.error(f"Error executing next action: {e}", exc_info=True)
-            return {"error": f"Failed to execute action: {str(e)}"}
-    
     def get_game_state(self):
         """Convert current game state to JSON format for frontend"""
         if not self.current_hand:
@@ -514,8 +302,6 @@ class PokerGameServer:
                 
                 # Get reasoning if available
                 if hasattr(last_action_record.action, 'reasons') and last_action_record.action.reasons:
-                    #reasoning = "; ".join(last_action_record.action.reasons)
-                    #reasoning = ". ".join(last_action_record.action.reasons)
                     # Clean up each reason and join properly
                     cleaned_reasons = []
                     for reason in last_action_record.action.reasons:
@@ -524,7 +310,6 @@ class PokerGameServer:
                             reason += '.'
                         cleaned_reasons.append(reason)
                     reasoning = " ".join(cleaned_reasons)
-            
             
             hand_str = str(player.hand_name) if player.hand_name is not None else None
             if hand_str and ':' in hand_str:
@@ -559,10 +344,14 @@ class PokerGameServer:
             "dealerIndex": self.current_hand.game_state.dealer_position,
             "players": players_data,
             "isComplete": self.current_hand.is_complete,
-            # 8/29
-            'handsPlayed': self.hand_no,
+            'handsPlayed': self.table_manager.hand_no,
             'maxHands': int(getattr(self.config, 'max_hands', 0) or 0)
         }
+
+    def reset_game(self):
+        """Reset the entire game"""
+        self.setup_players()  # This will recreate the TableManager too
+        self.current_hand = None
 
 # Global game instance
 poker_game = PokerGameServer()
@@ -621,10 +410,7 @@ def auto_play():
 def reset_game():
     """Reset the entire game"""
     with game_lock:
-        poker_game.setup_players()
-        poker_game.dealer_position = 0
-        poker_game.hand_no = 0
-        poker_game.current_hand = None
+        poker_game.reset_game()
         return jsonify({"status": "reset"})
 
 if __name__ == '__main__':
