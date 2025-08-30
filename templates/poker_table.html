@@ -188,8 +188,7 @@
 
         .player-name {
             font-weight: bold;
-            font-size: 18px;
-            /*color: #1e40af;*/
+            font-size: 24px;
             text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
@@ -275,6 +274,7 @@
             display: flex;
             gap: 8px;
             margin-bottom: 15px;
+            justify-content: center;
             flex-wrap: wrap;
         }
 
@@ -386,11 +386,12 @@
 
         /* Playing cards with glass effect */
         .card {
-            width: 65px;
-            height: 90px;
+            /* Change from 65px x 90px to board card size */
+            width: 85px;
+            height: 115px;
             position: relative;
             border-radius: 12px;
-            padding: 6px 4px;
+            padding: 8px 6px; /* Adjust padding for larger size */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -406,7 +407,7 @@
             
             color: #0f172a;
             font-weight: 800;
-            font-size: 18px;
+            font-size: 20px; /* Increase font size to match board cards */
         }
         
         .card.red {
@@ -414,13 +415,13 @@
         }
 
         .card .rank {
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 900;
             line-height: 1;
         }
 
         .card .suit {
-            font-size: 22px;
+            font-size: 26px;
             line-height: 1;
             margin-top: -4px;
         }
