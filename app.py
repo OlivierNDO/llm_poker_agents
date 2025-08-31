@@ -279,7 +279,10 @@ class PokerGameServer:
         if hasattr(self.current_hand.game_state, 'current_player_index'):
             current_player_index = self.current_hand.game_state.current_player_index
             current_player = self.current_hand.game_state.get_current_player()
-        
+            logger.info(f"DEBUG: current_player = {current_player.name if current_player else None}")
+            logger.info(f"DEBUG: current_player_index = {current_player_index}")
+            logger.info(f"DEBUG: hand phase = {self.current_hand.phase}")
+                    
         # Convert players to frontend format
         players_data = []
         hand_players = self.current_hand.players
@@ -296,20 +299,19 @@ class PokerGameServer:
             recent_actions = self.current_hand.game_state.get_player_actions(player.name)
             if recent_actions:
                 last_action_record = recent_actions[-1]
-                last_action = last_action_record.action.action_type.value
-                if last_action_record.action.amount > 0:
-                    last_action += f" ${last_action_record.action.amount}"
                 
                 # Get reasoning if available
                 if hasattr(last_action_record.action, 'reasons') and last_action_record.action.reasons:
-                    # Clean up each reason and join properly
-                    cleaned_reasons = []
+                    # The reasons should already have emoji prefixes from the agent
+                    formatted_reasons = []
                     for reason in last_action_record.action.reasons:
                         reason = reason.strip()
-                        if reason and not reason.endswith('.'):
-                            reason += '.'
-                        cleaned_reasons.append(reason)
-                    reasoning = " ".join(cleaned_reasons)
+                        if reason:
+                            # Ensure proper sentence ending
+                            if not reason.endswith('.'):
+                                reason += '.'
+                            formatted_reasons.append(reason)
+                    reasoning = " ".join(formatted_reasons)
             
             hand_str = str(player.hand_name) if player.hand_name is not None else None
             if hand_str and ':' in hand_str:
@@ -326,7 +328,9 @@ class PokerGameServer:
                 "hand": hand_str,
                 "active": player.is_active,
                 "currentBet": player.current_bet,
-                "isCurrentPlayer": i == current_player_index
+                "isCurrentPlayer": player.name == (current_player.name if current_player else None)
+                #"isCurrentPlayer": player == current_player
+                #"isCurrentPlayer": i == current_player_index
             })
         
         # Convert board cards
