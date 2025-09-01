@@ -1,55 +1,34 @@
 game:
-  small_blind: 1
-  big_blind: 2
-  max_hands: 4
+  small_blind: 2
+  big_blind: 3
+  max_hands: 450
   max_hands_per_session: 500
-  llm_call_delay: 0.15
+  llm_call_delay: 0.25
 
 players:
-  - name: "player 1"
-    model: "openai/chatgpt-4o-latest"
-    chips: 300
+  - name: "DeepSeek: v3"
+    model: "deepseek/deepseek-chat"
+    chips: 200
     enabled: true
 
-  - name: "player 2"
-    model: "openai/chatgpt-4o-latest"
-    chips: 300
-    enabled: true
-
-  - name: "player 3"
-    model: "openai/chatgpt-4o-latest"
-    chips: 300
-    enabled: true
-    
-  - name: "player 4"
-    model: "openai/chatgpt-4o-latest"
-    chips: 300
-    enabled: false
-    
-  - name: "player 5"
-    model: "openai/chatgpt-4o-latest"
-    chips: 300
-    enabled: false    
-
-    
-  - name: "Llama 3.3 70B"
-    model: "meta-llama/llama-3.3-70b-instruct"
-    chips: 250
-    enabled: false
-
-  - name: "Claude 3.5 Sonnet"
+  - name: "Anthropic: Sonnet 3.5"
     model: "anthropic/claude-3.5-sonnet"
-    chips: 250
-    enabled: false
-
-  - name: "Claude 3 Haiku"
-    model: "anthropic/claude-3-haiku"
-    chips: 250
-    enabled: false
-
-  - name: "Gpt 4.1 Nano"
-    model: "openai/gpt-4.1-nano"
-    chips: 250
+    chips: 200
+    enabled: true
+    
+  - name: "Google: Gemini 2.5 Flash"
+    model: "google/gemini-2.5-flash"
+    chips: 200
+    enabled: true
+    
+  - name: "OpenAI: Gpt 4o"
+    model: "openai/chatgpt-4o-latest"
+    chips: 200
+    enabled: true
+    
+  - name: "Meta: Llama 3.3 70B"
+    model: "meta-llama/llama-3.3-70b-instruct:free"
+    chips: 200
     enabled: false
 
   - name: "Llama 3.1 405B"
@@ -59,16 +38,6 @@ players:
 
   - name: "Claude Sonnet 4"
     model: "anthropic/claude-sonnet-4"
-    chips: 250
-    enabled: false
-
-  - name: "DeepSeek 3.1"
-    model: "deepseek/deepseek-chat-v3.1"
-    chips: 250
-    enabled: false
-
-  - name: "Gemini 2.5 Flash"
-    model: "google/gemini-2.5-flash"
     chips: 250
     enabled: false
 
