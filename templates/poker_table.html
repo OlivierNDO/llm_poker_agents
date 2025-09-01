@@ -171,8 +171,26 @@
 
         /* Folded state */
         .player-card.folded {
-            filter: grayscale(0.3) opacity(0.7);
-            background: rgba(255, 255, 255, 0.04);
+            filter: grayscale(0.8) opacity(0.5);
+            background: rgba(255, 255, 255, 0.02);
+            transform: scale(0.95);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+        
+        .player-card.folded .player-name {
+            opacity: 0.6;
+        }
+        
+        .player-card.folded .chip-count {
+            opacity: 0.5;
+        }
+        
+        .player-card.folded .last-action-display {
+            opacity: 0.8;
+        }
+        
+        .player-card.folded .player-reasoning {
+            opacity: 0.4;
         }
 
 
@@ -186,9 +204,10 @@
         }
 
         .player-name {
-            font-weight: bold;
+            font-weight: 700; /* Apple uses 700 weight frequently */
             font-size: 24px;
-            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+            color: #424245; /* Medium gray - easier on the eyes */
+            text-shadow: 0 0.5px 1px rgba(255, 255, 255, 0.6);
         }
 
         .dealer-indicator {
@@ -207,20 +226,37 @@
             -webkit-backdrop-filter: blur(8px);
             box-shadow: 0 2px 8px rgba(31, 38, 135, 0.3);
         }
+        
+        .chip-count-display {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+
+
+        .chip-number {
+            text-align: center;
+            color: #1e40af;
+            font-weight: 800;
+            font-size: 22px;
+            margin-top: 8px;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+        
 
         .chip-count {
             background: rgba(255, 255, 255, 0.15);
             color: #1f2937;
             border-radius: 10px;
             font-weight: bold;
-            font-size: 16px;
+            font-size: 20px;
             border: 1px solid rgba(255, 255, 255, 0.3);
             text-align: center;
             width: var(--chip-count-width, 80px);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 8px 12px;
+            padding: 10px 16px;
             backdrop-filter: blur(12px) saturate(180%);
             -webkit-backdrop-filter: blur(12px) saturate(180%);
             box-shadow: 
@@ -352,8 +388,12 @@
                 0 4px 12px rgba(2, 6, 23, 0.15),
                 inset 0 1px 0 rgba(255, 255, 255, 0.5);
         }
-
-
+        
+        .hand-box:empty::before {
+            content: '\00A0'; /* Non-breaking space to maintain height */
+            opacity: 0;
+        }
+        
         .player-reasoning {
             margin-top: 12px;
             min-height: 290px;
@@ -695,7 +735,7 @@
           transform-origin: center bottom;
           opacity: 0;
           transform: translateY(10px) scaleY(0.5);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.3);
+          /* box-shadow: 0 1px 2px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.3); */
         }
         .chip.visible { opacity: 1; transform: translateY(0) scaleY(1); }
         .chip.removing { opacity: 0; transform: translateY(10px) scaleY(0.5); }
@@ -707,14 +747,65 @@
         .chip.purple { background: linear-gradient(to bottom,#c084fc 0%,#a855f7 20%,#7c3aed 50%,#a855f7 80%,#c084fc 100%); }
         .chip.orange { background: linear-gradient(to bottom,#fb923c 0%,#f97316 20%,#c2410c 50%,#f97316 80%,#fb923c 100%); }
         
-        .player-delta {
-          position: absolute; top: 8px; right: 12px;
-          padding: 6px 10px; border-radius: 12px; font-weight: 800; font-size: 12px;
-          background: rgba(0,0,0,0.85); color: #22c55e; border: 1px solid rgba(255,255,255,0.2);
-          opacity: 0; transform: translateY(-6px); transition: all .25s ease;
+        .chip.navy { 
+            background: 
+                radial-gradient(circle at center, transparent 30%, rgba(255,255,255,0.2) 35%, transparent 40%),
+                radial-gradient(circle at center, transparent 60%, rgba(255,255,255,0.1) 65%, transparent 70%),
+                linear-gradient(to bottom, #60a5fa 0%, #3b82f6 20%, #1e40af 50%, #3b82f6 80%, #60a5fa 100%);
         }
-        .player-delta.neg { color: #ef4444; }
-        .player-delta.show { opacity: 1; transform: translateY(0); }
+        
+        /* Last Action Display Box */
+        .last-action-display {
+            margin-top: 12px;
+            padding: 14px 18px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 18px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            
+            background: rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            box-shadow:
+                0 4px 12px rgba(2, 6, 23, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+        
+        /* Action type colors */
+        .last-action-display.fold {
+            background: rgba(107, 114, 128, 0.3);
+            border-color: rgba(107, 114, 128, 0.5);
+            color: #374151;
+        }
+        
+        .last-action-display.check {
+            background: rgba(34, 197, 94, 0.25);
+            border-color: rgba(34, 197, 94, 0.4);
+            color: #166534;
+        }
+        
+        .last-action-display.call {
+            background: rgba(59, 130, 246, 0.25);
+            border-color: rgba(59, 130, 246, 0.4);
+            color: #1e40af;
+        }
+        
+        .last-action-display.bet, .last-action-display.raise {
+            background: rgba(239, 68, 68, 0.25);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #b91c1c;
+        }
+        
+        .last-action-display.waiting {
+            background: rgba(156, 163, 175, 0.2);
+            border-color: rgba(156, 163, 175, 0.3);
+            color: #6b7280;
+            font-style: italic;
+            text-transform: none;
+        }
 
         
         
@@ -776,7 +867,10 @@
                 return '<div class="reasoning-empty">Waiting for decision...</div>';
             }
             
-            const reasons = reasoning.split(/[.!?]+/).map(r => r.trim()).filter(r => r.length > 0);
+            //const reasons = reasoning.split(/[.!?]+/).map(r => r.trim()).filter(r => r.length > 0);
+            
+            // Split only on period+space, exclamation+space, question+space (actual sentence endings)
+            const reasons = reasoning.split(/[.!?]+\s+/).map(r => r.trim()).filter(r => r.length > 0);
             
             if (reasons.length === 0) {
                 return '<div class="reasoning-empty">Waiting for decision...</div>';
@@ -852,9 +946,6 @@
                     cardsHtml += cardElement.outerHTML;
                 });
             }
-
-            const showHandStrength = gameState && 
-                ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(gameState.phase);
                 
             const reasoningBubbles = createReasoningBubbles(player.reasoning || '');
 
@@ -862,7 +953,6 @@
                 <div class="player-header">
                     <div>
                         <div class="player-name">${player.name}</div>
-                        <div class="chip-count"><span class="chip-count__num">${player.chips}</span></div>
                     </div>
                     ${dealerIndicator}
                 </div>
@@ -870,15 +960,18 @@
                 <div class="player-cards">${cardsHtml}</div>
 
                 <div class="action-info-row">
-                    <div class="action-box">${player.action || 'Waiting...'}</div>
-                    ${showHandStrength && player.hand ? `<div class="hand-box">${player.hand}</div>` : ''}
+                    <div class="hand-box">${player.hand || ''}</div>
                 </div>
                 
 
                 <div class="player-reasoning">
                   ${reasoningBubbles}
                 </div>
-                                
+                         
+                <div class="last-action-display waiting" id="action-display-${index}">
+                  Waiting for action...
+                </div>       
+                
                 
                 <div class="stacks-grid" data-player="${player.name}">
                   <div class="chip-stack"><div class="stack-column"><!-- chips go here --></div></div>
@@ -886,7 +979,8 @@
                   <div class="chip-stack"><div class="stack-column"></div></div>
                   <div class="chip-stack"><div class="stack-column"></div></div>
                 </div>
-                <div class="player-delta" id="delta-${index}"></div>
+                
+                <div class="chip-number"><span class="chip-count__num">${player.chips}</span></div>
             `;
 
             return playerCard;
@@ -1023,14 +1117,15 @@
             const card = document.getElementById(`player-${index}`);
             if (!card) return;
         
-            const color = CHIP_COLORS[index % CHIP_COLORS.length];
+            //const color = CHIP_COLORS[index % CHIP_COLORS.length];
+            const color = 'navy';
             const name = player.name;
             
-            // Apply the chip color to the player name
-            const nameElement = card.querySelector('.player-name');
-            if (nameElement) {
-                nameElement.style.color = getChipColorHex(color);
-            }
+            // In ensureChipStacksForPlayer function, comment out this section:
+            // const nameElement = card.querySelector('.player-name');
+            // if (nameElement) {
+            //     nameElement.style.color = getChipColorHex(color);
+            // }
         
             // Use GLOBAL denominator for all players
             const denom = getGlobalChipDenominator();
@@ -1085,7 +1180,7 @@
 
 
         
-        function updateChipStacks(state) {
+        function OLD_updateChipStacks(state) {
           if (!state?.players) return;
           state.players.forEach((p, idx) => {
             ensureChipStacksForPlayer(p, idx);
@@ -1113,6 +1208,104 @@
             }
             ui.prevCash = p.chips;
           });
+        }
+        
+        
+        function updateChipStacks(state) {
+          if (!state?.players) return;
+          
+          // Get the actual starting chip amount from the game configuration
+          const startingChips = [...initialChips.values()][0]; // All players start with same amount
+          
+          // Scale so starting amount = ~15 visual units, max possible (all chips) = 40 units
+          const totalChipsInGame = [...initialChips.values()].reduce((a, b) => a + b, 0);
+          const chipsPerUnit = totalChipsInGame / 40; // Winner with all chips = max height
+          
+          state.players.forEach((p, idx) => {
+            ensureChipStacksForPlayer(p, idx);
+            const ui = playerChipUI.get(p.name);
+            if (!ui) return;
+        
+            const totalUnits = Math.max(1, Math.min(40, Math.floor((p.chips || 0) / chipsPerUnit)));
+        
+            const perStack = Math.floor(totalUnits / ui.stacks.length);
+            const rem = totalUnits % ui.stacks.length;
+        
+            ui.stacks.forEach((stack, i) => {
+              const units = perStack + (i < rem ? 1 : 0);
+              stack.setChipCount(units, /*animated*/ true);
+            });
+        
+            ui.prevCash = p.chips;
+          });
+        }
+                                
+        
+        // Track previous actions to avoid unnecessary updates
+        const playerActionStates = new Map();
+        
+        function updateActionDisplay(player, index) {
+            const actionDisplayEl = document.getElementById(`action-display-${index}`);
+            if (!actionDisplayEl) return;
+            
+            // DEBUG: Log what we're getting
+            console.log(`Player ${player.name}: action="${player.action}", active=${player.active}`);
+            
+            // Check if this player's action has actually changed
+            const currentAction = player.action || '';
+            const previousAction = playerActionStates.get(player.name) || '';
+            
+            if (currentAction === previousAction) {
+                return; // No change, skip update
+            }
+            
+            // Store the new action state
+            playerActionStates.set(player.name, currentAction);
+            
+            // Remove all action type classes
+            actionDisplayEl.className = 'last-action-display';
+            
+            if (!player.action || player.action === 'Waiting...' || player.action === '') {
+                actionDisplayEl.classList.add('waiting');
+                actionDisplayEl.textContent = 'Waiting for action...';
+                return;
+            }
+            
+            const action = player.action.toLowerCase();
+            let displayText = player.action;
+            let actionType = 'waiting';
+            
+            // Determine action type and format display text
+            if (action.includes('fold')) {
+                actionType = 'fold';
+                displayText = 'FOLD';
+            } else if (action.includes('check')) {
+                actionType = 'check';
+                displayText = 'CHECK';
+            } else if (action.includes('call')) {
+                actionType = 'call';
+                const match = action.match(/call\s+\$?(\d+)/i);
+                displayText = match ? `CALL $${match[1]}` : 'CALL';
+            } else if (action.includes('bet')) {
+                actionType = 'bet';
+                const match = action.match(/bet\s+\$?(\d+)/i);
+                displayText = match ? `BET $${match[1]}` : 'BET';
+            } else if (action.includes('raise')) {
+                actionType = 'raise';
+                const match = action.match(/raise.*?to\s+\$?(\d+)|raise\s+\$?(\d+)/i);
+                const amount = match ? (match[1] || match[2]) : null;
+                displayText = amount ? `RAISE $${amount}` : 'RAISE';
+            } else if (action.includes('all-in') || action.includes('all in')) {
+                actionType = 'raise';
+                displayText = 'ALL-IN';
+            }
+            
+            actionDisplayEl.classList.add(actionType);
+            actionDisplayEl.textContent = displayText;
+        }
+        
+        function clearActionStates() {
+            playerActionStates.clear();
         }
 
 
@@ -1151,12 +1344,87 @@
             }
             
             const playersGrid = document.getElementById('playersGrid');
-            playersGrid.innerHTML = '';
+
+            // Only recreate if player count changed or no players exist
+            const existingPlayerCards = playersGrid.children.length;
+            const newPlayerCount = state.players ? state.players.length : 0;
+            
+            if (existingPlayerCards !== newPlayerCount) {
+                // Player count changed, need to recreate
+                playersGrid.innerHTML = '';
+                clearActionStates(); // Clear tracking since we're recreating
+                
+                if (state.players) {
+                    state.players.forEach((player, index) => {
+                        const isDealer = index === state.dealerIndex;
+                        const playerCard = createPlayerCard(player, index, isDealer, state);
+                        playersGrid.appendChild(playerCard);
+                    });
+                }
+            } else {
+                // Same number of players, just update existing cards
+                if (state.players) {
+                    state.players.forEach((player, index) => {
+                        const existingCard = document.getElementById(`player-${index}`);
+                        if (existingCard) {
+                            // Update active/folded state
+                            existingCard.classList.toggle('folded', !player.active);
+                            existingCard.classList.toggle('active', player.isCurrentPlayer);
+                            
+                            // Update dealer indicator
+                            const dealerIndicator = existingCard.querySelector('.dealer-indicator');
+                            const shouldShowDealer = index === state.dealerIndex;
+                            if (shouldShowDealer && !dealerIndicator) {
+                                const header = existingCard.querySelector('.player-header');
+                                header.innerHTML += '<div class="dealer-indicator">D</div>';
+                            } else if (!shouldShowDealer && dealerIndicator) {
+                                dealerIndicator.remove();
+                            }
+                            
+                            const cardsContainer = existingCard.querySelector('.player-cards');
+                            if (cardsContainer) {
+                              cardsContainer.innerHTML = '';
+                              if (player.cards && player.cards.length > 0) {
+                                player.cards.forEach(card => {
+                                  const cardElement = createCard(card);
+                                  cardsContainer.appendChild(cardElement);
+                                });
+                              } else {
+                                // optional: show facedown backs if no cards yet
+                                cardsContainer.appendChild(createCard(''));
+                                cardsContainer.appendChild(createCard(''));
+                              }
+                            }
+                            
+                            // Update hand strength display if needed
+                            const showHandStrength = ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(state.phase);
+                            const handBox = existingCard.querySelector('.hand-box');
+                            if (showHandStrength && player.hand && !handBox) {
+                                const actionRow = existingCard.querySelector('.action-info-row');
+                                actionRow.innerHTML += `<div class="hand-box">${player.hand}</div>`;
+                            } else if (handBox) {
+                                if (showHandStrength && player.hand) {
+                                    handBox.textContent = player.hand;
+                                } else if (!showHandStrength) {
+                                    handBox.textContent = ''; // Clear content but keep the box
+                                }
+                            }
+                            
+                            // Update reasoning
+                            const reasoningEl = existingCard.querySelector('.player-reasoning');
+                            if (reasoningEl) {
+                                const reasoningBubbles = createReasoningBubbles(player.reasoning || '');
+                                reasoningEl.innerHTML = reasoningBubbles;
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Now update action displays (existing elements won't be destroyed)
             if (state.players) {
                 state.players.forEach((player, index) => {
-                    const isDealer = index === state.dealerIndex;
-                    const playerCard = createPlayerCard(player, index, isDealer, state);
-                    playersGrid.appendChild(playerCard);
+                    updateActionDisplay(player, index);
                 });
             }
             
@@ -1352,6 +1620,7 @@
         }
 
         async function startNewHand() {
+            clearActionStates();
             showLoading();
             addLogEntry("Starting new hand...");
             

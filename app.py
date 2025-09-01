@@ -299,6 +299,29 @@ class PokerGameServer:
             recent_actions = self.current_hand.game_state.get_player_actions(player.name)
             if recent_actions:
                 last_action_record = recent_actions[-1]
+                logger.info(f"DEBUG: {player.name} last action record: {last_action_record}")
+                
+                # Extract the action string properly
+                if hasattr(last_action_record.action, 'action_type'):
+                    action_type = last_action_record.action.action_type
+                    if action_type.value == 'fold':  # Use .value to get the string
+                        last_action = "Fold"
+                    elif action_type.value == 'check':
+                        last_action = "Check"
+                    elif action_type.value == 'call':
+                        amount = getattr(last_action_record.action, 'amount', 0)
+                        last_action = f"Call ${amount}" if amount > 0 else "Call"
+                    elif action_type.value == 'bet':
+                        amount = getattr(last_action_record.action, 'amount', 0)
+                        # Check if this is a blind
+                        if any('blind' in reason.lower() for reason in last_action_record.action.reasons):
+                            blind_type = 'Small Blind' if 'small' in ' '.join(last_action_record.action.reasons).lower() else 'Big Blind'
+                            last_action = f"{blind_type} ${amount}"
+                        else:
+                            last_action = f"Bet ${amount}"
+                    elif action_type.value == 'raise':
+                        amount = getattr(last_action_record.action, 'amount', 0)
+                        last_action = f"Raise to ${amount}"
                 
                 # Get reasoning if available
                 if hasattr(last_action_record.action, 'reasons') and last_action_record.action.reasons:
@@ -318,6 +341,8 @@ class PokerGameServer:
                 hand_str = hand_str.split(':', 1)[0].strip()
             if hand_str and ',' in hand_str:
                 hand_str = hand_str.split(',', 1)[0].strip()
+            if hand_str and 'Sixs' in hand_str:
+                hand_str = hand_str.replace('Sixs', 'Sixes')
             
             players_data.append({
                 "name": player.name,
