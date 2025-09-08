@@ -15,13 +15,6 @@ from src.core_poker_mechanics import Card, Suit, HandEvaluator
 
 from src.logging_config import logger
 
-class ActionType(Enum):
-    FOLD = "fold"
-    CHECK = "check"
-    CALL = "call"
-    BET = "bet"
-    RAISE = "raise"
-    ALL_IN = "all_in"
 
 
 @dataclass
@@ -743,7 +736,7 @@ class Hand:
     
 
 def card_to_str(card: Card) -> str:
-    """Convert a Card object into 'Ad', 'Ks', etc. for encode_game_state_from_strings."""
+    """Convert a Card object into 'Ad', 'Ks', etc."""
     rank_map = {
         14: 'A', 13: 'K', 12: 'Q', 11: 'J', 10: 'T',
          9: '9',  8: '8',  7: '7',  6: '6',  5: '5',

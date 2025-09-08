@@ -4,44 +4,57 @@ game:
   max_hands: 450
   max_hands_per_session: 500
   llm_call_delay: 0.25
+  mcp_enabled: true           # Enable MCP system
+  mcp_script_dir: "./mcp_servers"     # Path to MCP server scripts
+  model_path: "D:/llm_poker_agents/src/model_objects/poker_model.h5"
+  model_input_size: 423
+  model_hidden_layers: [4096, 2048, 1024, 512, 256, 128, 64]
 
 players:
   - name: "DeepSeek: v3"
     model: "deepseek/deepseek-chat"
     chips: 200
-    enabled: true
+    use_mcp: true
+    enabled: false
 
   - name: "Anthropic: Sonnet 3.5"
     model: "anthropic/claude-3.5-sonnet"
     chips: 200
-    enabled: true
+    use_mcp: true
+    enabled: false
     
   - name: "Google: Gemini 2.5 Flash"
     model: "google/gemini-2.5-flash"
     chips: 200
+    use_mcp: true
     enabled: true
     
   - name: "OpenAI: Gpt 4o"
     model: "openai/chatgpt-4o-latest"
     chips: 200
+    use_mcp: true
     enabled: true
     
   - name: "Meta: Llama 3.3 70B"
     model: "meta-llama/llama-3.3-70b-instruct:free"
     chips: 200
+    use_mcp: true
     enabled: false
 
   - name: "Llama 3.1 405B"
     model: "meta-llama/llama-3.1-405b-instruct:free"
     chips: 250
+    use_mcp: true
     enabled: false
 
   - name: "Claude Sonnet 4"
     model: "anthropic/claude-sonnet-4"
     chips: 250
+    use_mcp: true
     enabled: false
 
   - name: "Gpt 5"
     model: "openai/gpt-5"
     chips: 250
+    use_mcp: true
     enabled: false
