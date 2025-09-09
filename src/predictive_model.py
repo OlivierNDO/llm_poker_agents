@@ -187,7 +187,7 @@ class PokerPredictor:
             Dictionary with win, tie, loss probabilities and sample count.
         """
         import random
-        from src.core import HandEvaluator
+        from src.core_poker_mechanics import HandEvaluator
     
         if random_seed is not None:
             random.seed(random_seed)

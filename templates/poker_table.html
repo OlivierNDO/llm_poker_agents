@@ -57,10 +57,17 @@
             justify-content: center;
             flex-wrap: wrap;
         }
+        
+        /* Container for side-by-side reasoning boxes */
+        .reasoning-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
 
         .players-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
             gap: 20px;
             max-width: none;
             margin: 0 auto;
@@ -73,7 +80,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            width: min(100%, 360px);
+            width: min(100%, 650px);
             padding: 20px;
             border-radius: 20px;
             overflow: hidden;
@@ -414,6 +421,16 @@
             overflow-y: auto;
             overflow-x: hidden;
         }
+        
+        .reasoning-label {
+            font-size: 18px; /* Increased from 11px */
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }
 
         /* Individual reason bubbles */
         .reason-bubble {
@@ -421,7 +438,7 @@
             margin: 4px 6px 4px 0;
             padding: 6px 12px;
             border-radius: 16px;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             line-height: 1.3;
             max-width: 100%;
@@ -806,8 +823,60 @@
             font-style: italic;
             text-transform: none;
         }
-
         
+        .planning-reasoning, .player-reasoning {
+            flex: 1;
+            margin-top: 0;
+            margin-bottom: 0;
+            min-height: 450px; /* Doubled from 320px */
+            max-height: 450px;
+            padding: 16px;
+            
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 12px;
+            
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            
+            box-shadow:
+                0 4px 12px rgba(2, 6, 23, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        /* Increase gap between the two boxes */
+        .reasoning-row {
+            display: flex;
+            gap: 16px; /* Increased from 12px */
+            margin-top: 12px;
+        }
+        
+
+
+        @media (max-width: 768px) {
+            .reasoning-row {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .players-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .player-card {
+                width: min(100%, 500px);
+            }
+            
+            .planning-reasoning, .player-reasoning {
+                min-height: 450px; /* Doubled from 250px */
+                max-height: 450px;
+            }
+        }
+                        
+                        
         
         
     </style>
@@ -867,8 +936,6 @@
                 return '<div class="reasoning-empty">Waiting for decision...</div>';
             }
             
-            //const reasons = reasoning.split(/[.!?]+/).map(r => r.trim()).filter(r => r.length > 0);
-            
             // Split only on period+space, exclamation+space, question+space (actual sentence endings)
             const reasons = reasoning.split(/[.!?]+\s+/).map(r => r.trim()).filter(r => r.length > 0);
             
@@ -876,7 +943,10 @@
                 return '<div class="reasoning-empty">Waiting for decision...</div>';
             }
             
-            return reasons.map((reason, index) => {
+            // Take only the last 4 reasons
+            const recentReasons = reasons.slice(-4);
+            
+            return recentReasons.map((reason, index) => {
                 // Clean up emoji prefixes if they exist, but don't use them for styling
                 let cleanReason = reason
                     .replace(/^[🎯📊💭🎭💰]\s*/, '') // Remove emoji prefixes
@@ -929,16 +999,15 @@
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
             playerCard.id = `player-${index}`;
-
+        
             if (!player.active) {
                 playerCard.classList.add('folded');
             } else if (player.isCurrentPlayer) {
                 playerCard.classList.add('active');
-                // Remove the 'thinking' class - we don't need it anymore
             }
-
+        
             const dealerIndicator = isDealer ? '<div class="dealer-indicator">D</div>' : '';
-
+        
             let cardsHtml = '';
             if (player.cards && player.cards.length > 0) {
                 player.cards.forEach(card => {
@@ -946,9 +1015,10 @@
                     cardsHtml += cardElement.outerHTML;
                 });
             }
-                
+                    
             const reasoningBubbles = createReasoningBubbles(player.reasoning || '');
-
+            const planningBubbles = createReasoningBubbles(player.planning || ''); // NEW
+        
             playerCard.innerHTML = `
                 <div class="player-header">
                     <div>
@@ -956,33 +1026,32 @@
                     </div>
                     ${dealerIndicator}
                 </div>
-
+        
                 <div class="player-cards">${cardsHtml}</div>
-
+        
                 <div class="action-info-row">
                     <div class="hand-box">${player.hand || ''}</div>
                 </div>
                 
-
-                <div class="player-reasoning">
-                  ${reasoningBubbles}
+                <div class="reasoning-row">
+                  <div class="planning-reasoning">
+                    <div class="reasoning-label">Planning:</div>
+                    ${planningBubbles}
+                  </div>
+                
+                  <div class="player-reasoning">
+                    <div class="reasoning-label">Decision:</div>
+                    ${reasoningBubbles}
+                  </div>
                 </div>
-                         
+                             
                 <div class="last-action-display waiting" id="action-display-${index}">
                   Waiting for action...
-                </div>       
-                
-                
-                <div class="stacks-grid" data-player="${player.name}">
-                  <div class="chip-stack"><div class="stack-column"><!-- chips go here --></div></div>
-                  <div class="chip-stack"><div class="stack-column"></div></div>
-                  <div class="chip-stack"><div class="stack-column"></div></div>
-                  <div class="chip-stack"><div class="stack-column"></div></div>
                 </div>
                 
                 <div class="chip-number"><span class="chip-count__num">${player.chips}</span></div>
             `;
-
+        
             return playerCard;
         }
 
@@ -1414,7 +1483,13 @@
                             const reasoningEl = existingCard.querySelector('.player-reasoning');
                             if (reasoningEl) {
                                 const reasoningBubbles = createReasoningBubbles(player.reasoning || '');
-                                reasoningEl.innerHTML = reasoningBubbles;
+                                reasoningEl.innerHTML = '<div class="reasoning-label">Decision:</div>' + reasoningBubbles;
+                            }
+                            
+                            const planningEl = existingCard.querySelector('.planning-reasoning');
+                            if (planningEl) {
+                                const planningBubbles = createReasoningBubbles(player.planning || '');
+                                planningEl.innerHTML = '<div class="reasoning-label">Planning:</div>' + planningBubbles;
                             }
                         }
                     });
@@ -1618,9 +1693,24 @@
             
             logContainer.scrollTop = logContainer.scrollHeight;
         }
+        
+        function clearReasoningContent() {
+            // Clear all planning and reasoning boxes
+            const planningBoxes = document.querySelectorAll('.planning-reasoning');
+            const reasoningBoxes = document.querySelectorAll('.player-reasoning');
+            
+            planningBoxes.forEach(box => {
+                box.innerHTML = '<div class="reasoning-label">Planning:</div><div class="reasoning-empty">Waiting for decision...</div>';
+            });
+            
+            reasoningBoxes.forEach(box => {
+                box.innerHTML = '<div class="reasoning-label">Decision:</div><div class="reasoning-empty">Waiting for decision...</div>';
+            });
+        }
 
         async function startNewHand() {
             clearActionStates();
+            clearReasoningContent();
             showLoading();
             addLogEntry("Starting new hand...");
             

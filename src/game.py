@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from src.agent_utils import FeatureReporter
 from src.poker_types import ActionType, Action, ActionRecord
 from src.core_poker_mechanics import Card, Suit, HandEvaluator
-
+from src.monte_carlo_tracker import MonteCarloUsageTracker
 from src.logging_config import logger
 
 
@@ -271,7 +271,12 @@ class GameState:
             for player in self.players:
                 player.current_bet = 0
             self.current_bet = 0
-        
+            
+        # Clear reasoning/planning for new betting round
+        for player in self.players:
+            if hasattr(player, 'planning_reasoning'):
+                player.planning_reasoning = ""
+            
         # DON'T reset player_pot_contributions here - they accumulate for the entire hand
         
         self.last_raiser_index = -1
@@ -370,6 +375,7 @@ class Hand:
         self.game_state = GameState(players)
         self.stats_tracker = stats_tracker
         self.logger = logger
+        self.monte_carlo_tracker = MonteCarloUsageTracker(players)
         
         # Hand progression state
         self.phase = "setup"  # setup -> hole_cards -> preflop -> flop -> flop_betting -> turn -> turn_betting -> river -> river_betting -> showdown -> complete
@@ -422,6 +428,9 @@ class Hand:
         for player in self.players:
             player.reset_for_hand()
         self.game_state = GameState(self.players)
+        
+        # Reset Monte Carlo usage for new hand
+        self.monte_carlo_tracker.reset_for_new_hand(self.players)
         
         # The GameState __init__ already initializes player_pot_contributions
         # so no additional code needed here
@@ -491,7 +500,8 @@ class Hand:
         # Execute one action
         valid_actions = current_player.get_valid_actions(self.game_state)
         #action = current_player.get_action(self.game_state)
-        action = current_player.get_action(self.game_state, self.stats_tracker)
+        #action = current_player.get_action(self.game_state, self.stats_tracker)
+        action = current_player.get_action(self.game_state, self.stats_tracker, self.monte_carlo_tracker)
 
         
         # Record action for stats
@@ -771,6 +781,9 @@ class Player:
         self.is_active = True
         self.is_all_in = False
         self.hand_name = None
+        self.planning_reasoning = ""  # Clear planning display
+        if hasattr(self, 'planning_reasoning'):
+            delattr(self, 'planning_reasoning')
     
     def can_act(self) -> bool:
         return self.is_active and not self.is_all_in and self.chips > 0
@@ -830,13 +843,13 @@ class Player:
         return new_current_bet, pot_addition
     
     
-    def get_action(self, game_state: GameState, stats_tracker: Optional[StatsTracker] = None) -> Action:
+    def get_action(self, game_state: GameState, stats_tracker: Optional[StatsTracker] = None, monte_carlo_tracker: Optional[MonteCarloUsageTracker] = None) -> Action:
         if not self.agent:
             raise ValueError(f"Player {self.name} has no agent")
     
         valid_actions = self.get_valid_actions(game_state)
-        return self.agent.get_action(self, game_state, valid_actions, stats_tracker)
-    
+        return self.agent.get_action(self, game_state, valid_actions, stats_tracker, monte_carlo_tracker)
+        
     
     def get_cards(self, game_state: GameState) -> dict:
         """Get dictionary with player hole cards and board cards"""

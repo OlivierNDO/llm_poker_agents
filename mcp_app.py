@@ -468,6 +468,7 @@ class PokerGameServer:
                 "cards": hole_cards,
                 "action": last_action,
                 "reasoning": reasoning,
+                "planning": getattr(player, 'planning_reasoning', ''),
                 "hand": hand_str,
                 "active": player.is_active,
                 "currentBet": player.current_bet,

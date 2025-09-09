@@ -1,7 +1,7 @@
 """
 llm_agent_mcp_integration.py
 
-Original working version - each agent gets its own MCP servers.
+Monte Carlo only version - removes TensorFlow ML model complexity
 """
 
 import asyncio
@@ -78,7 +78,7 @@ class LLMAgentMCP:
             script_path = os.path.join(self.mcp_script_dir, "hand_analysis_server.py")
             hand_success = await self.mcp_client.connect_to_hand_analysis_server(script_path)
             
-            # Connect to predictive model server
+            # Connect to Monte Carlo server
             script_path = os.path.join(self.mcp_script_dir, "predictive_model_server.py")
             pred_success = await self.mcp_client.connect_to_predictive_model_server(script_path)
             
@@ -90,13 +90,12 @@ class LLMAgentMCP:
                     if hand_success:
                         status.append("hand_analysis")
                     if pred_success:
-                        status.append("predictive_model")
+                        status.append("monte_carlo")
                     self.logger.info(f"{self.name}: Connected to MCP servers: {status}. Capabilities: {self.available_capabilities}")
                 return True
             else:
                 if self.verbose:
                     self.logger.warning(f"{self.name}: Failed to connect to any MCP servers")
-                return False
                 
         except Exception as e:
             if self.verbose:
@@ -119,63 +118,114 @@ class LLMAgentMCP:
         player: 'Player',
         game_state: 'GameState',
         valid_actions: List[ActionType],
-        stats_tracker: Optional['StatsTracker'] = None
+        stats_tracker: Optional['StatsTracker'] = None,
+        monte_carlo_tracker = None  # ADD THIS PARAMETER
     ) -> Action:
         """Synchronous wrapper for async get_action_async"""
-        return asyncio.run(self.get_action_async(player, game_state, valid_actions, stats_tracker))
+        return asyncio.run(self.get_action_async(player, game_state, valid_actions, stats_tracker, monte_carlo_tracker))
 
     async def get_action_async(
         self,
         player: 'Player',
         game_state: 'GameState',
         valid_actions: List[ActionType],
-        stats_tracker: Optional['StatsTracker'] = None
+        stats_tracker: Optional['StatsTracker'] = None,
+        monte_carlo_tracker = None
     ) -> Action:
         """Complete MCP-enabled decision making process"""
+        
+        # Clear any previous planning reasoning at the start
+        player.planning_reasoning = ""
         
         # Ensure MCP is initialized
         if not self.mcp_client:
             await self.initialize_mcp()
-
+    
         # Three-stage process: Planning → Information Gathering → Decision
-        planning_decision = await self._get_planning_decision_mcp(player, game_state, valid_actions)
-        gathered_info = await self._gather_information_mcp(planning_decision, player, game_state, stats_tracker)
-        return await self._make_betting_decision_mcp(player, game_state, valid_actions, gathered_info)
+        planning_decision = await self._get_planning_decision_mcp(player, game_state, valid_actions, monte_carlo_tracker)
+        gathered_info = await self._gather_information_mcp(planning_decision, player, game_state, stats_tracker, monte_carlo_tracker)
+        final_action = await self._make_betting_decision_mcp(player, game_state, valid_actions, gathered_info)
+        
+        # NEW: Store planning reasoning on the player for UI display
+        planning_reasons = planning_decision.get("reasoning", [])
+        
+        # Create utilities summary with HTML breaks
+        utilities_lines = ["Utilities Called:"]
+        if planning_decision.get('need_hand_analysis', False):
+            utilities_lines.append("• Hand Analysis")
+        if planning_decision.get('need_outcome_prediction', False):
+            utilities_lines.append("• Monte Carlo")
+        if planning_decision.get('need_opponent_stats', False):
+            utilities_lines.append("• Opponent Stats")
+        
+        if len(utilities_lines) == 1:  # Only the header was added
+            utilities_lines.append("• None")
+        
+        # Join utilities with HTML breaks
+        utilities_summary = "<br>".join(utilities_lines)
+        
+        # Combine with reasoning
+        planning_parts = [utilities_summary]
+        if planning_reasons:
+            planning_parts.extend(planning_reasons)
+        
+        # Store on player object for UI access
+        if planning_parts:
+            player.planning_reasoning = ". ".join(planning_parts)
+        else:
+            player.planning_reasoning = "No planning provided."
+        
+        return final_action
 
     async def _get_planning_decision_mcp(
         self,
         player: 'Player',
         game_state: 'GameState',
-        valid_actions: List[ActionType]
+        valid_actions: List[ActionType],
+        monte_carlo_tracker = None  # ADD THIS PARAMETER
     ) -> dict:
-        """MCP-enabled planning with dynamic capability discovery"""
+        """MCP-enabled planning with usage tracking"""
         
         # Get basic game info
         basic_info = self._get_basic_prompt_info_fallback(player, game_state)
         legal_str = ", ".join(a.value for a in valid_actions)
         
-        # Dynamic capability listing
+        # Check Monte Carlo availability
+        monte_carlo_available = False
+        usage_status = "Monte Carlo: Not available"
+        
+        if monte_carlo_tracker and "monte_carlo_simulation" in self.available_capabilities:
+            monte_carlo_available = monte_carlo_tracker.can_use_monte_carlo(player.name)
+            usage_status = monte_carlo_tracker.get_usage_status(player.name)
+        
+        # Dynamic capability listing with usage info
         capability_descriptions = {
             "comprehensive_hand_analysis": "HAND ANALYSIS: Mathematical strength, probabilities, equity calculations",
-            "hand_strength_scoring": "HAND STRENGTH: Normalized strength scoring (0.0-1.0)",
-            "ml_outcome_prediction": "ML PREDICTION: Win/tie/loss probabilities using trained neural network",
-            "monte_carlo_simulation": "MONTE CARLO: Outcome probabilities via simulation",
-            "quick_win_probability": "WIN PROBABILITY: Fast win chance estimate",
+            "monte_carlo_simulation": f"MONTE CARLO: Outcome probabilities via simulation (2,500 iterations) - {usage_status}",
+            "quick_win_probability": f"WIN PROBABILITY: Fast win chance estimate (1,000 iterations) - {usage_status}",
         }
         
         capability_list = []
         for capability in self.available_capabilities:
-            description = capability_descriptions.get(capability, f"ANALYSIS: {capability}")
-            capability_list.append(description)
+            # Only include Monte Carlo capabilities if available
+            if capability in ["monte_carlo_simulation", "quick_win_probability"]:
+                if monte_carlo_available:
+                    description = capability_descriptions.get(capability, f"ANALYSIS: {capability}")
+                    capability_list.append(description)
+                # Skip if Monte Carlo is used up
+            else:
+                description = capability_descriptions.get(capability, f"ANALYSIS: {capability}")
+                capability_list.append(description)
         
         if not capability_list:
-            capability_list = ["LIMITED ANALYSIS: Basic game state only (MCP servers unavailable)"]
+            capability_list = ["LIMITED ANALYSIS: Basic game state only"]
         
         capabilities_text = "\n".join(f"{i+1}. {cap}" for i, cap in enumerate(capability_list))
         
+        
         planning_prompt = f"""
         PROFILE: {self.player_profile}
-
+        
         TASK: Plan your poker decision. You have access to analytical tools - use them strategically.
         
         SITUATION:
@@ -186,18 +236,23 @@ class LLMAgentMCP:
         AVAILABLE ANALYSIS CAPABILITIES:
         {capabilities_text}
         
+        ANALYSIS BUDGET: {usage_status}
+        IMPORTANT CONSIDERATIONS:
+            > Monte Carlo analysis can only be used ONCE per hand. Choose when to use it wisely. Only in rare occasions would it be wise to use this pre-flop.
+            > Opponent stats can be used any time, but depending on the number of hands played, they may or may not be informative.
+            
         You must output exactly this JSON format:
-        {{"need_hand_analysis": true, "need_outcome_prediction": true, "need_opponent_stats": true, "ready_to_decide": false, "reasoning": ["why I need this info"]}}
+        {{"need_hand_analysis": true, "need_outcome_prediction": {str(monte_carlo_available).lower()}, "need_opponent_stats": true, "ready_to_decide": false, "reasoning": ["short reason 1", "short reason 2"]}}
         
         DECISION FRAMEWORK:
-        - need_hand_analysis: Should be TRUE unless you have recent analysis or obvious nuts/trash
-        - need_outcome_prediction: Should be TRUE for close decisions where win probability matters
-        - need_opponent_stats: Should be TRUE unless you have recent reads on opponents
+        - need_hand_analysis: Consider if hand analysis would help your decision
+        - need_outcome_prediction: {str(monte_carlo_available).upper()} (Monte Carlo {'available - USE WISELY' if monte_carlo_available else 'exhausted for this hand'})
+        - need_opponent_stats: Consider if opponent reads would influence your decision  
         - ready_to_decide: Only TRUE if confident without additional analysis
-        - reasoning: Explain your information needs (1-3 short reasons)
-        
-        Output JSON only:"""
+        - reasoning: 1-3 reasons
 
+        Output JSON only:"""
+    
         if self.log_prompts:
             self.logger.info('Planning prompt submitted:')
             self.logger.info(planning_prompt)
@@ -212,7 +267,7 @@ class LLMAgentMCP:
             self.logger.info(f"{self.name} Planning: hand_analysis={planning.get('need_hand_analysis', False)}, "
                f"outcome_prediction={planning.get('need_outcome_prediction', False)}, "
                f"opponent_stats={planning.get('need_opponent_stats', False)}, "
-               f"ready={planning.get('ready_to_decide', True)} | {reasons}")
+               f"ready={planning.get('ready_to_decide', True)} | {usage_status} | {reasons}")
         
         return planning
 
@@ -221,13 +276,14 @@ class LLMAgentMCP:
         planning_decision: dict,
         player: 'Player',
         game_state: 'GameState',
-        stats_tracker: Optional['StatsTracker']
+        stats_tracker: Optional['StatsTracker'],
+        monte_carlo_tracker = None  # ADD THIS PARAMETER
     ) -> dict:
-        """MCP-enabled information gathering"""
+        """MCP-enabled information gathering with usage tracking"""
         
         gathered = {}
         
-        # Hand analysis via MCP
+        # Hand analysis via MCP (unchanged)
         if planning_decision.get("need_hand_analysis", False) and self.mcp_client:
             try:
                 hole_cards = [card_to_str(c) for c in player.hole_cards] if player.hole_cards else []
@@ -244,8 +300,8 @@ class LLMAgentMCP:
             except Exception as e:
                 if self.verbose:
                     self.logger.error(f"{self.name}: Hand analysis MCP failed: {e}")
-
-        # Opponent stats via direct StatsTracker (fallback)
+    
+        # Opponent stats via direct StatsTracker (unchanged)
         if planning_decision.get("need_opponent_stats", False) and stats_tracker:
             try:
                 opponent_stats = stats_tracker.get_opponent_stats_summary(player.name)
@@ -257,46 +313,58 @@ class LLMAgentMCP:
             except Exception as e:
                 if self.verbose:
                     self.logger.error(f"{self.name}: Opponent stats gathering failed: {e}")
-
-        # Outcome predictions via MCP
-        if planning_decision.get("need_outcome_prediction", False) and self.mcp_client:
-            self.logger.info('\n\n\nML PREDICTION LOGS\n\n\n')
-            if self.verbose:
-                self.logger.info(f"{self.name}: DEBUG - Starting outcome prediction call")
-
-            try:
-                hole_cards = [card_to_str(c) for c in player.hole_cards] if player.hole_cards else []
-                board_cards = [card_to_str(c) for c in game_state.board] if game_state.board else []
-                num_players = len(game_state.get_active_players())
-                self.logger.info(f"  Cards prepared: hole={hole_cards}, board={board_cards}, players={num_players}")
-                
-                if "ml_outcome_prediction" in self.available_capabilities:
-                    self.logger.info(f"{self.name}: DEBUG - Calling ML prediction")
-                    prediction = await self.mcp_client.predict_outcome_ml(hole_cards, board_cards, num_players)
-                    self.logger.info(f"\n\nRaw prediction result: {prediction}\n\n")
-                    if prediction:
-                        gathered["outcome_prediction"] = f"ML Prediction - Win: {prediction['win_percentage']}, Tie: {prediction['tie_percentage']}, Loss: {prediction['loss_percentage']} | Most likely: {prediction['predicted_class']}"
-                        if self.verbose:
-                            self.logger.info(f"{self.name}: ML PREDICTION RESULTS:")
-                            self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
-                            self.logger.info(f"  Win: {prediction['win_percentage']} | Tie: {prediction['tie_percentage']} | Loss: {prediction['loss_percentage']}")
-                            self.logger.info(f"  Predicted class: {prediction['predicted_class']} | Confidence: {prediction.get('confidence', 'N/A')}")
-                            
-                elif "monte_carlo_simulation" in self.available_capabilities:
-                    prediction = await self.mcp_client.predict_outcome_monte_carlo(hole_cards, board_cards, num_players, 3000)
-                    if prediction:
-                        gathered["outcome_prediction"] = f"Monte Carlo Prediction ({prediction['samples']} simulations) - Win: {prediction['win_percentage']}, Tie: {prediction['tie_percentage']}, Loss: {prediction['loss_percentage']}"
-                        if self.verbose:
-                            self.logger.info(f"{self.name}: MONTE CARLO PREDICTION RESULTS:")
-                            self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
-                            self.logger.info(f"  Win: {prediction['win_percentage']} | Tie: {prediction['tie_percentage']} | Loss: {prediction['loss_percentage']}")
-                            self.logger.info(f"  Simulations: {prediction['samples']} | Method: Monte Carlo")
-                
-            except Exception as e:
+    
+        # Outcome predictions via Monte Carlo MCP WITH USAGE TRACKING
+        if planning_decision.get("need_outcome_prediction", False) and self.mcp_client and monte_carlo_tracker:
+            if monte_carlo_tracker.can_use_monte_carlo(player.name):
                 if self.verbose:
-                    self.logger.error(f"{self.name}: Outcome prediction MCP failed: {e}")
-                    self.logger.error(f"  Failed input: hole={hole_cards}, board={board_cards}, players={num_players}")
-
+                    self.logger.info(f"{self.name}: DEBUG - Starting Monte Carlo prediction call")
+    
+                try:
+                    hole_cards = [card_to_str(c) for c in player.hole_cards] if player.hole_cards else []
+                    board_cards = [card_to_str(c) for c in game_state.board] if game_state.board else []
+                    num_players = len(game_state.get_active_players())
+                    self.logger.info(f"  Cards prepared: hole={hole_cards}, board={board_cards}, players={num_players}")
+                    
+                    if "monte_carlo_simulation" in self.available_capabilities:
+                        self.logger.info(f"{self.name}: DEBUG - Calling Monte Carlo prediction")
+                        prediction = await self.mcp_client.predict_outcome_monte_carlo(hole_cards, board_cards, num_players, 2500)
+                        
+                        # RECORD USAGE AFTER SUCCESSFUL CALL
+                        monte_carlo_tracker.record_usage(player.name)
+                        
+                        self.logger.info(f"\n\nRaw Monte Carlo result: {prediction}\n\n")
+                        if prediction:
+                            gathered["outcome_prediction"] = f"Monte Carlo Prediction (2,500 simulations) - Win: {prediction['win_percentage']}, Tie: {prediction['tie_percentage']}, Loss: {prediction['loss_percentage']} | Samples: {prediction['samples']}"
+                            if self.verbose:
+                                self.logger.info(f"{self.name}: MONTE CARLO PREDICTION RESULTS:")
+                                self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
+                                self.logger.info(f"  Win: {prediction['win_percentage']} | Tie: {prediction['tie_percentage']} | Loss: {prediction['loss_percentage']}")
+                                self.logger.info(f"  Samples: {prediction['samples']} | Method: Monte Carlo (2.5k iterations)")
+                                self.logger.info(f"  Usage after call: {monte_carlo_tracker.get_usage_status(player.name)}")
+                                
+                    elif "quick_win_probability" in self.available_capabilities:
+                        win_prob = await self.mcp_client.get_win_probability_fast(hole_cards, board_cards, num_players)
+                        
+                        # RECORD USAGE AFTER SUCCESSFUL CALL
+                        monte_carlo_tracker.record_usage(player.name)
+                        
+                        if win_prob:
+                            gathered["outcome_prediction"] = f"Quick Win Probability: {win_prob:.1%} (1,000 Monte Carlo simulations)"
+                            if self.verbose:
+                                self.logger.info(f"{self.name}: QUICK WIN PROBABILITY RESULTS:")
+                                self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
+                                self.logger.info(f"  Win probability: {win_prob:.1%} | Method: Fast Monte Carlo (1k iterations)")
+                                self.logger.info(f"  Usage after call: {monte_carlo_tracker.get_usage_status(player.name)}")
+                    
+                except Exception as e:
+                    if self.verbose:
+                        self.logger.error(f"{self.name}: Monte Carlo prediction MCP failed: {e}")
+                        self.logger.error(f"  Failed input: hole={hole_cards}, board={board_cards}, players={num_players}")
+            else:
+                if self.verbose:
+                    self.logger.info(f"{self.name}: Monte Carlo prediction skipped - {monte_carlo_tracker.get_usage_status(player.name)}")
+    
         return gathered
 
     async def _make_betting_decision_mcp(
@@ -331,24 +399,29 @@ class LLMAgentMCP:
         
         # Enhanced decision prompt
         decision_prompt = f"""{self.player_profile}
-    
-    COMPREHENSIVE POKER ANALYSIS:
-    {combined_info}
-    
-    LEGAL ACTIONS: [{legal_str}]
-    
-    Based on this analysis, choose your optimal action.
-    
-    Your response must be valid JSON only:
-    {{"action": "fold|check|call|bet|raise|all_in", "amount": null_or_integer, "reasons": ["reason1", "reason2"]}}
-    
-    Key decision factors:
-    - Hand strength and drawing potential
-    - Pot odds and mathematical correctness
-    - Opponent tendencies and likely holdings
-    - Position and betting round dynamics
-    
-    Your response must start with {{ and contain only valid JSON:"""
+
+        COMPREHENSIVE POKER ANALYSIS:
+        {combined_info}
+        
+        LEGAL ACTIONS: [{legal_str}]
+        
+        Based on this analysis, choose your optimal action.
+        
+        Your response must be valid JSON only:
+        {{"action": "fold|check|call|bet|raise|all_in", "amount": null_or_integer, "reasons": ["reason1", "reason2"]}}
+        
+        REASONING REQUIREMENTS:
+        - Maximum 2-3 reasons
+        - Be concise and direct
+        
+        Key decision factors:
+        - Hand strength and drawing potential
+        - Pot odds and mathematical correctness
+        - Opponent tendencies and likely holdings
+        - Position and betting round dynamics
+        - Exploitative opportunities and opponent image management
+        
+        Your response must start with {{ and contain only valid JSON:"""
 
         if self.log_prompts:
             self.logger.info('Decision prompt submitted')

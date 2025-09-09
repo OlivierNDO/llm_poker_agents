@@ -2,7 +2,7 @@ game:
   small_blind: 2
   big_blind: 3
   max_hands: 450
-  max_hands_per_session: 500
+  max_hands_per_session: 450
   llm_call_delay: 0.25
   mcp_enabled: true           # Enable MCP system
   mcp_script_dir: "./mcp_servers"     # Path to MCP server scripts
@@ -10,15 +10,24 @@ game:
   model_input_size: 423
   model_hidden_layers: [4096, 2048, 1024, 512, 256, 128, 64]
 
+
+
 players:
-  - name: "DeepSeek: v3"
-    model: "deepseek/deepseek-chat"
+
+  - name: "Anthropic: Opus 4.1"
+    model: "anthropic/claude-opus-4.1"
+    chips: 200
+    use_mcp: true
+    enabled: true
+    
+  - name: "Google: Gemini 2.5 Pro"
+    model: "google/gemini-2.5-pro"
     chips: 200
     use_mcp: true
     enabled: false
-
-  - name: "Anthropic: Sonnet 3.5"
-    model: "anthropic/claude-3.5-sonnet"
+    
+  - name: "OpenAI: Gpt 5"
+    model: "openai/gpt-5"
     chips: 200
     use_mcp: true
     enabled: false
@@ -27,19 +36,26 @@ players:
     model: "google/gemini-2.5-flash"
     chips: 200
     use_mcp: true
-    enabled: true
+    enabled: false
+    
+    
+  - name: "DeepSeek: v3"
+    model: "deepseek/deepseek-chat"
+    chips: 200
+    use_mcp: true
+    enabled: false
     
   - name: "OpenAI: Gpt 4o"
     model: "openai/chatgpt-4o-latest"
     chips: 200
     use_mcp: true
-    enabled: true
+    enabled: false
     
   - name: "Meta: Llama 3.3 70B"
     model: "meta-llama/llama-3.3-70b-instruct:free"
     chips: 200
     use_mcp: true
-    enabled: false
+    enabled: true
 
   - name: "Llama 3.1 405B"
     model: "meta-llama/llama-3.1-405b-instruct:free"

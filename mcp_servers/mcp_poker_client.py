@@ -1,5 +1,5 @@
 """
-Fixed mcp_poker_client.py with correct path resolution
+mcp_poker_client.py - Windows-compatible version with proper timeouts
 """
 
 import asyncio
@@ -7,10 +7,11 @@ import json
 import os
 import sys
 import subprocess
+import time
+import threading
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 
-# Add the parent directory to the path so we can import src modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 @dataclass
@@ -20,26 +21,27 @@ class ServerConfig:
     script_path: str
     description: str
 
-class SimpleMCPClient:
-    """Simplified MCP client that directly communicates with server processes."""
+class WindowsCompatibleMCPClient:
+    """Windows-compatible MCP client with proper timeout handling"""
     
     def __init__(self):
         self.servers = {}  # name -> subprocess.Popen
-        self.available_tools = {}  # tool_name -> server_name
+        self.server_configs = {}  # name -> ServerConfig
         
     def start_server(self, config: ServerConfig) -> bool:
-        """Start an MCP server subprocess with fixed path resolution"""
+        """Start an MCP server subprocess"""
         try:
+            # Stop existing server if running
+            if config.name in self.servers:
+                self.stop_server(config.name)
+            
             script_path = os.path.abspath(config.script_path)
             if not os.path.exists(script_path):
                 print(f"Server script not found: {script_path}")
                 return False
             
-            # Fixed: Use the directory containing the script, not the script's directory
             script_dir = os.path.dirname(script_path)
-            
-            # If we're in the mcp directory, go up one level to the project root
-            if os.path.basename(script_dir) == 'mcp':
+            if os.path.basename(script_dir) == 'mcp_servers':
                 working_dir = os.path.dirname(script_dir)
             else:
                 working_dir = script_dir
@@ -53,15 +55,15 @@ class SimpleMCPClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=working_dir  # Fixed working directory
+                cwd=working_dir
             )
             
             self.servers[config.name] = process
+            self.server_configs[config.name] = config
             print(f"Started server {config.name} (PID: {process.pid})")
             
-            # Give the server a moment to initialize
-            import time
-            time.sleep(1)
+            # Give server time to initialize
+            time.sleep(2)
             
             # Check if it's still running
             if process.poll() is not None:
@@ -83,10 +85,11 @@ class SimpleMCPClient:
             process = self.servers[server_name]
             try:
                 process.terminate()
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
             except Exception as e:
                 print(f"Error stopping server {server_name}: {e}")
             
@@ -98,10 +101,35 @@ class SimpleMCPClient:
         for server_name in list(self.servers.keys()):
             self.stop_server(server_name)
     
+    def _read_with_timeout(self, process, timeout_seconds=15):
+        """Read from process stdout with timeout using threading"""
+        result = [None]  # Use list to allow modification from inner function
+        exception = [None]
+        
+        def read_line():
+            try:
+                result[0] = process.stdout.readline()
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=read_line)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout=timeout_seconds)
+        
+        if thread.is_alive():
+            # Timeout occurred
+            return None, "timeout"
+        
+        if exception[0]:
+            return None, f"error: {exception[0]}"
+        
+        return result[0], None
+    
     def send_request(self, server_name: str, request: dict) -> Optional[dict]:
-        """Send a JSON-RPC request to a server"""
+        """Send a JSON-RPC request to a server with Windows-compatible timeout"""
         if server_name not in self.servers:
-            print(f"Server {server_name} not found in {list(self.servers.keys())}")
+            print(f"Server {server_name} not found")
             return None
         
         process = self.servers[server_name]
@@ -119,35 +147,24 @@ class SimpleMCPClient:
             process.stdin.flush()
             
             # Read response with timeout
-            import select
-            import time
+            response_line, error = self._read_with_timeout(process, timeout_seconds=15)
             
-            # Simple timeout mechanism
-            start_time = time.time()
-            timeout = 10  # 10 second timeout
-            
-            while time.time() - start_time < timeout:
-                # Check if process died
-                if process.poll() is not None:
-                    print(f"Server {server_name} died while waiting for response")
-                    stderr_output = process.stderr.read()
-                    if stderr_output:
-                        print(f"Server stderr: {stderr_output}")
-                    return None
-                
-                # Try to read a line
+            if error == "timeout":
+                print(f"[CLIENT] Timeout waiting for response from {server_name}")
+                return None
+            elif error:
+                print(f"[CLIENT] Error reading from {server_name}: {error}")
+                return None
+            elif response_line:
+                print(f"[CLIENT] Response from {server_name}: {response_line.strip()}")
                 try:
-                    response_line = process.stdout.readline()
-                    if response_line:
-                        print(f"[CLIENT] Response from {server_name}: {response_line.strip()}")
-                        return json.loads(response_line.strip())
-                    else:
-                        time.sleep(0.1)  # Small delay before retry
-                except:
-                    time.sleep(0.1)
-            
-            print(f"[CLIENT] Timeout waiting for response from {server_name}")
-            return None
+                    return json.loads(response_line.strip())
+                except json.JSONDecodeError as e:
+                    print(f"[CLIENT] JSON decode error: {e}")
+                    return None
+            else:
+                print(f"[CLIENT] Empty response from {server_name}")
+                return None
             
         except Exception as e:
             print(f"Error communicating with server {server_name}: {e}")
@@ -194,15 +211,11 @@ class SimpleMCPClient:
         
         return None
 
-
-
-
-
 class MCPPokerClient:
-    """High-level poker client that wraps SimpleMCPClient."""
+    """High-level poker client that wraps WindowsCompatibleMCPClient"""
     
     def __init__(self):
-        self.client = SimpleMCPClient()
+        self.client = WindowsCompatibleMCPClient()
         self.connected_servers = []
         
     async def connect_to_hand_analysis_server(self, script_path: str = None) -> bool:
@@ -236,17 +249,17 @@ class MCPPokerClient:
         return False
     
     async def connect_to_predictive_model_server(self, script_path: str = None) -> bool:
-        """Connect to the predictive model server with better error handling"""
+        """Connect to the Monte Carlo predictive model server"""
         if script_path is None:
             current_dir = os.path.dirname(__file__)
             script_path = os.path.join(current_dir, "predictive_model_server.py")
         
-        print(f"Attempting to connect to predictive model server at: {script_path}")
+        print(f"Attempting to connect to Monte Carlo server at: {script_path}")
         
         config = ServerConfig(
             name="predictive_model",
             script_path=script_path,
-            description="Poker outcome predictions using ML and Monte Carlo"
+            description="Poker outcome predictions using Monte Carlo simulation"
         )
         
         success = self.client.start_server(config)
@@ -256,60 +269,38 @@ class MCPPokerClient:
             # Test the connection
             tools = self.client.list_tools("predictive_model")
             if tools:
-                print(f"Predictive model server ready with {len(tools)} tools")
+                print(f"Monte Carlo server ready with {len(tools)} tools")
                 print(f"Available tools: {[t.get('name') for t in tools]}")
                 return True
             else:
-                print("Predictive model server started but no tools found")
-                #self.client.stop_server("predictive_model")
-                #if "predictive_model" in self.connected_servers:
-                #    self.connected_servers.remove("predictive_model")
+                print("Monte Carlo server started but no tools found")
                 return False
         
         return False
     
-    async def predict_outcome_ml(self, hole_cards: List[str], board_cards: List[str], num_players: int) -> Optional[dict]:
-        """Get ML-based outcome prediction"""
-        print(f"[POKER_CLIENT] ML prediction request: {hole_cards}, {board_cards}, {num_players}")
+    async def predict_outcome_monte_carlo(self, hole_cards: List[str], board_cards: List[str], 
+                                         num_players: int, iterations: int = 2500) -> Optional[dict]:
+        """Get Monte Carlo-based outcome prediction"""
+        print(f"[POKER_CLIENT] Monte Carlo prediction request: {hole_cards}, {board_cards}, {num_players}")
         
-        #if "predictive_model" not in self.connected_servers:
-        #    print("[POKER_CLIENT] Predictive model server not connected")
-        #    return None
-        
-        result = self.client.call_tool("predictive_model", "predict_outcome_ml", {
+        result = self.client.call_tool("predictive_model", "predict_outcome_monte_carlo", {
             "hole_cards": hole_cards,
             "board_cards": board_cards,
-            "num_players": num_players
+            "num_players": num_players,
+            "iterations": 2500
         })
         
         if result:
             try:
                 parsed = json.loads(result)
-                print(f"[POKER_CLIENT] ML prediction result: {parsed}")
+                print(f"[POKER_CLIENT] Monte Carlo prediction result: {parsed}")
                 return parsed
             except json.JSONDecodeError as e:
                 print(f"[POKER_CLIENT] JSON decode error: {e}")
                 print(f"[POKER_CLIENT] Raw result: {result}")
                 return None
         
-        print("[POKER_CLIENT] No result from ML prediction")
-        return None
-    
-    async def predict_outcome_monte_carlo(self, hole_cards: List[str], board_cards: List[str], 
-                                         num_players: int, iterations: int = 5000) -> Optional[dict]:
-        """Get Monte Carlo-based outcome prediction"""
-        result = self.client.call_tool("predictive_model", "predict_outcome_monte_carlo", {
-            "hole_cards": hole_cards,
-            "board_cards": board_cards,
-            "num_players": num_players,
-            "iterations": iterations
-        })
-        
-        if result:
-            try:
-                return json.loads(result)
-            except json.JSONDecodeError:
-                return None
+        print("[POKER_CLIENT] No result from Monte Carlo prediction")
         return None
     
     async def get_win_probability_fast(self, hole_cards: List[str], board_cards: List[str], num_players: int) -> Optional[float]:
@@ -341,15 +332,17 @@ class MCPPokerClient:
         
         if "predictive_model" in self.connected_servers:
             tools = self.client.list_tools("predictive_model")
-            if any(tool.get("name") == "predict_outcome_ml" for tool in tools):
-                capabilities.append("ml_outcome_prediction")
             if any(tool.get("name") == "predict_outcome_monte_carlo" for tool in tools):
                 capabilities.append("monte_carlo_simulation")
             if any(tool.get("name") == "get_win_probability" for tool in tools):
                 capabilities.append("quick_win_probability")
+        
+        if "hand_analysis" in self.connected_servers:
+            tools = self.client.list_tools("hand_analysis")
+            if any(tool.get("name") == "get_hand_features" for tool in tools):
+                capabilities.append("comprehensive_hand_analysis")
             
         return capabilities
-    
     
     def is_connected(self, server_name: str) -> bool:
         """Check if connected to a specific server"""
@@ -361,24 +354,24 @@ class MCPPokerClient:
         self.connected_servers.clear()
 
 # Test function
-async def test_predictive_model():
-    """Test the predictive model server connection"""
+async def test_monte_carlo():
+    """Test the Monte Carlo server connection"""
     try:
         client = MCPPokerClient()
         
         # Find the server script
         current_dir = os.path.dirname(__file__)
-        server_script = os.path.join(current_dir, "mcp", "predictive_model_server.py")
+        server_script = os.path.join(current_dir, "predictive_model_server.py")
         
         if not os.path.exists(server_script):
             print(f"Server script not found at: {server_script}")
             return
         
-        print("Connecting to predictive model server...")
+        print("Connecting to Monte Carlo server...")
         success = await client.connect_to_predictive_model_server(server_script)
         
         if not success:
-            print("Failed to connect to predictive model server")
+            print("Failed to connect to Monte Carlo server")
             return
         
         print("Connected successfully!")
@@ -389,10 +382,10 @@ async def test_predictive_model():
         board_cards = ["Ac", "4s", "9d"]
         num_players = 2
         
-        print(f"\nTesting ML prediction with {hole_cards} on {board_cards} vs {num_players} players:")
+        print(f"\nTesting Monte Carlo prediction with {hole_cards} on {board_cards} vs {num_players} players:")
         
-        result = await client.predict_outcome_ml(hole_cards, board_cards, num_players)
-        print(f"ML prediction result: {result}")
+        result = await client.predict_outcome_monte_carlo(hole_cards, board_cards, num_players)
+        print(f"Monte Carlo prediction result: {result}")
         
     except Exception as e:
         print(f"Test error: {e}")
@@ -403,4 +396,4 @@ async def test_predictive_model():
             await client.disconnect_all()
 
 if __name__ == "__main__":
-    asyncio.run(test_predictive_model())
+    asyncio.run(test_monte_carlo())
