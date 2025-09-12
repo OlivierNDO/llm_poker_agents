@@ -116,6 +116,7 @@ class PokerGameServer:
             model_id = str(p.get('model', ''))
             chips = int(p.get('chips', 250))
             use_mcp = p.get('use_mcp', False)
+            color = p.get('color', '#2563eb')
             
             client = OpenRouterCompletionEngine(model=model_id)
             
@@ -158,7 +159,8 @@ class PokerGameServer:
                 Player(
                     name=name,
                     chips=chips,
-                    agent=agent
+                    agent=agent,
+                    color=color
                 )
             )
         
@@ -585,7 +587,8 @@ class PokerGameServer:
                 "mcpCapabilities": mcp_capabilities,
                 "handAnalysis": hand_analysis_data,      # Always a string, never None
                 "monteCarloResult": monte_carlo_data,    # Always a string, never None
-                "opponentStats": opponent_stats_data     # Always a string, never None
+                "opponentStats": opponent_stats_data,    # Always a string, never None
+                "color": getattr(player, 'color', '#2563eb')
             })
             
             # DEBUG: Log MCP data extraction

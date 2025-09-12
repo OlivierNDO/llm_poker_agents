@@ -795,10 +795,11 @@ def card_to_str(card: Card) -> str:
 
 
 class Player:
-    def __init__(self, name: str, chips: int, agent=None, logger = logger):
+    def __init__(self, name: str, chips: int, agent=None, color: str = '#2563eb', logger = logger):
         self.name = name
         self.chips = chips
         self.agent = agent
+        self.color = color
         self.logger = logger
         
         # Hand state

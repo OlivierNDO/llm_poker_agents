@@ -44,6 +44,10 @@
         .board-section {
             text-align: center;
             margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
         }
 
         .board-title {
@@ -278,14 +282,13 @@
             border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 16px;
             padding: 16px 32px;
-            margin: 0 auto 25px auto;
-            width: fit-content;
             text-align: center;
             backdrop-filter: blur(16px) saturate(180%);
             -webkit-backdrop-filter: blur(16px) saturate(180%);
             box-shadow: 
                 0 4px 16px rgba(31, 38, 135, 0.3),
                 inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            /* Remove margin: 0 auto 25px auto; and width: fit-content; */
         }
                 
         .pot-label {
@@ -1034,7 +1037,7 @@
         .utility-header {
             font-size: 20px;
             font-weight: 700;
-            color: #2563eb;
+            color: #1f2937;
             text-align: center;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -1238,6 +1241,7 @@
 
         function createPlayerCard(player, index, isDealer = false, gameState = null) {
             const playerCard = document.createElement('div');
+            const nameStyle = player.color ? `style="color: ${player.color};"` : '';
             playerCard.className = 'player-card';
             playerCard.id = `player-${index}`;
         
@@ -1263,7 +1267,7 @@
             playerCard.innerHTML = `
                 <div class="player-header">
                     <div>
-                        <div class="player-name">${player.name}</div>
+                        <div class="player-name" ${nameStyle}>${player.name}</div>
                     </div>
                     ${dealerIndicator}
                 </div>
@@ -1589,6 +1593,11 @@
             const monteCarloEl = document.getElementById('monte-carlo-content');
             const opponentStatsEl = document.getElementById('opponent-stats-content');
             
+            // Update utility box headers with player color
+            const handHeader = document.querySelector('.utility-card:nth-child(1) .utility-header');
+            const monteHeader = document.querySelector('.utility-card:nth-child(2) .utility-header');
+            const statsHeader = document.querySelector('.utility-card:nth-child(3) .utility-header');
+            
             if (displayPlayer) {
                 console.log(`Displaying data from: ${displayPlayer.name}`);
                 
@@ -1596,17 +1605,36 @@
                 monteCarloEl.textContent = displayPlayer.monteCarloResult || '';
                 opponentStatsEl.textContent = displayPlayer.opponentStats || '';
                 
+                // Apply player color to headers if color exists
+                if (displayPlayer.color) {
+                    handHeader.style.color = displayPlayer.color;
+                    monteHeader.style.color = displayPlayer.color;
+                    statsHeader.style.color = displayPlayer.color;
+                    console.log(`Applied utility header color ${displayPlayer.color} for ${displayPlayer.name}`);
+                } else {
+                    // Reset to default color
+                    handHeader.style.color = '#1f2937';  // Changed from #2563eb
+                    monteHeader.style.color = '#1f2937';  // Changed from #2563eb
+                    statsHeader.style.color = '#1f2937';  // Changed from #2563eb
+                    console.log(`No color available for ${displayPlayer.name}, using default blue`);
+                }
+                
                 console.log('Updated utility boxes successfully');
             } else {
                 console.log('No player with MCP data found, clearing boxes');
                 handAnalysisEl.textContent = '';
                 monteCarloEl.textContent = '';
                 opponentStatsEl.textContent = '';
+                
+                // Reset headers to default color
+                if (handHeader) handHeader.style.color = '#1f2937';
+                if (monteHeader) monteHeader.style.color = '#1f2937';
+                if (statsHeader) statsHeader.style.color = '#1f2937';
             }
             
             console.log('=== END UTILITY BOX UPDATE ===');
         }
-        
+                
         function clearUtilityBoxes() {
             console.log('Clearing all utility boxes');
             document.getElementById('hand-analysis-content').textContent = '';
@@ -1705,6 +1733,29 @@
 
 
         function updateDisplay(state) {
+            // DEBUG: Check if colors are coming through
+            if (state.players) {
+                console.log('=== COLOR DEBUG ===');
+                state.players.forEach((player, idx) => {
+                    console.log(`Player ${idx}: ${player.name}, color: ${player.color || 'MISSING'}`);
+                });
+                console.log('===================');
+            }
+            
+            // FORCE UPDATE ALL PLAYER NAME COLORS (temporary fix)
+            if (state.players) {
+                state.players.forEach((player, index) => {
+                    const playerCard = document.getElementById(`player-${index}`);
+                    if (playerCard && player.color) {
+                        const nameEl = playerCard.querySelector('.player-name');
+                        if (nameEl) {
+                            nameEl.style.color = player.color;
+                            console.log(`Applied color ${player.color} to ${player.name}`);
+                        }
+                    }
+                });
+            }
+                    
             if (!state || state.error) {
                 showError(state?.error || "Failed to load game state");
                 return;
