@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 try:
     from src.predictive_model import PokerPredictor
+    import src.feature_engineering as fe
 except ImportError as e:
     print(f"Import error: {e}", file=sys.stderr, flush=True)
     sys.exit(1)

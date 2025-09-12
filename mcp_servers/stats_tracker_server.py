@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 try:
     from src.game import StatsTracker, PlayerStats
     from src.poker_types import ActionType, Action
+    import src.feature_engineering as fe
 except ImportError as e:
     print(f"Import error: {e}", file=sys.stderr)
     sys.exit(1)

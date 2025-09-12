@@ -355,13 +355,44 @@ class StatsTracker:
                 stats.vpip_hands += 1
                 stats.pfr_hands += 1
     
-    def get_opponent_stats_summary(self, my_name: str, include_win_rates: bool = False) -> str:
+    def DEPRECATED_get_opponent_stats_summary(self, my_name: str, include_win_rates: bool = False) -> str:
         """Get a summary of all opponents' stats"""
         lines = []
         for player_name, stats in self.player_stats.items():
             if player_name != my_name and stats.hands_played > 0:
                 lines.append(f"{player_name}: {stats.get_readable_stats(include_win_rates)}")
         return "\n".join(lines) if lines else "No opponent stats available"
+    
+    
+    def get_opponent_stats_summary(self, my_name: str, include_win_rates: bool = False) -> str:
+        """Get formatted summary of opponent statistics"""
+        lines = []
+        
+        for player_name, stats in self.player_stats.items():
+            if player_name == my_name:
+                continue
+                
+            if stats.hands_played == 0:
+                lines.append(f"{player_name}: No data available")
+                continue
+            
+            # Format based on sample size
+            if stats.hands_played < 10:
+                lines.append(f"{player_name}: Limited data ({stats.hands_played} hands)")
+            else:
+                lines.append(f"{player_name}: ({stats.hands_played} hands)")
+            
+            # Core stats with clear descriptions
+            lines.append(f"  Plays hands: {stats.get_vpip_percent():.1f}%")
+            lines.append(f"  Raises preflop: {stats.get_pfr_percent():.1f}%") 
+            lines.append(f"  Aggression factor: {stats.get_aggression_factor():.1f}")
+            
+            if include_win_rates and stats.hands_played > 0:
+                lines.append(f"  Win rate: {stats.get_win_rate():.1f}%")
+            
+            lines.append("")  # Blank line between players
+        
+        return "\n".join(lines).strip()
 
 
 

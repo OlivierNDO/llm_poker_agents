@@ -1,18 +1,84 @@
 """
 Updated mcp_app.py to use individual MCP servers per agent (non-shared)
 """
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 import json
 import os
+import numpy as np
 import asyncio
 import atexit
+import time
 from threading import Lock
 import yaml
 
 from src.game import Hand, Player, TableConfig, StatsTracker, TableManager, Action, ActionType
 from src.agent_utils import OpenRouterCompletionEngine
 from src.logging_config import logger
+import src.feature_engineering as fe
 
+
+### Compile Numba functions
+def warmup_numba():
+    """
+    Compile and cache all numba-specialized variants we rely on,
+    with representative inputs that cover major branches.
+    """
+    t0 = time.perf_counter()
+
+    # Representative hole cards
+    hole_cases = [
+        (np.array([14, 13], dtype=np.int32), np.array([0, 1], dtype=np.int32)),  # offsuit AK
+        (np.array([10, 8], dtype=np.int32),  np.array([3, 3], dtype=np.int32)),  # suited T8
+        (np.array([9,  9], dtype=np.int32),  np.array([2, 2], dtype=np.int32)),  # pair 99
+        (np.array([8, 7], dtype=np.int32),   np.array([1, 1], dtype=np.int32)),  # suited connectors
+        (np.array([5, 4], dtype=np.int32),   np.array([2, 3], dtype=np.int32)),  # wheel draw potential
+    ]
+
+    # Representative boards
+    boards = [
+        (np.array([], dtype=np.int32), np.array([], dtype=np.int32)),                              # preflop
+        (np.array([2, 7, 12], dtype=np.int32), np.array([0, 1, 2], dtype=np.int32)),              # dry flop
+        (np.array([6, 9, 13], dtype=np.int32), np.array([0, 1, 2], dtype=np.int32)),              # open-ended
+        (np.array([5, 9, 13], dtype=np.int32), np.array([0, 1, 2], dtype=np.int32)),              # gutshot
+        (np.array([14, 2, 3], dtype=np.int32), np.array([0, 1, 2], dtype=np.int32)),              # wheel draw
+        (np.array([2, 9, 13], dtype=np.int32), np.array([3, 3, 1], dtype=np.int32)),              # flush draw
+        (np.array([9, 7, 13], dtype=np.int32), np.array([3, 3, 3], dtype=np.int32)),              # made flush
+        (np.array([2, 7, 12, 5], dtype=np.int32), np.array([0, 1, 2, 3], dtype=np.int32)),        # turn
+        (np.array([2, 7, 12, 5, 9], dtype=np.int32), np.array([0, 1, 2, 3, 0], dtype=np.int32)),  # river
+    ]
+
+    opponent_counts = [1, 2, 6, 9]  # edge values are enough
+
+    for hole_ranks, hole_suits in hole_cases:
+        for board_ranks, board_suits in boards:
+            fe.extract_hand_strength_scalar(hole_ranks, board_ranks, hole_suits, board_suits)
+            if board_ranks.size >= 3:
+                fe.evaluate_best_hand(hole_ranks, board_ranks, hole_suits, board_suits)
+
+            fe.calculate_straight_probability(hole_ranks, hole_suits, board_ranks, board_suits)
+            fe.calculate_flush_probability(hole_ranks, hole_suits, board_ranks, board_suits)
+
+            for n_opponents in opponent_counts:
+                fe.calculate_opponent_straight_probability(
+                    hole_ranks, hole_suits, board_ranks, board_suits, n_opponents
+                )
+                fe.calculate_opponent_flush_probability(
+                    hole_ranks, hole_suits, board_ranks, board_suits, n_opponents
+                )
+
+    t1 = time.perf_counter()
+    logger.info(f"Numba cache warmup complete in {t1 - t0:.3f}s")
+
+
+
+# Run warmup once at startup
+logger.info('Numba: starting compilation')
+warmup_numba()
+logger.info('Numba: finished compilation')
+
+
+
+### Start flask app
 app = Flask(__name__)
 game_lock = Lock()
 
@@ -217,6 +283,17 @@ class PokerGameServer:
             player.reset_for_hand()
         logger.info("Players reset for new hand")
         
+        # Reset players for new hand
+        for player in active_players:
+            player.reset_for_hand()
+            # Clear MCP data from previous hand
+            if hasattr(player, 'hand_analysis'):
+                delattr(player, 'hand_analysis')
+            if hasattr(player, 'opponent_stats'):
+                delattr(player, 'opponent_stats') 
+            if hasattr(player, 'monte_carlo_result'):
+                delattr(player, 'monte_carlo_result')
+        
         # Create new hand
         self.current_hand = Hand(active_players, self.stats_tracker)
         logger.info("Hand object created")
@@ -244,6 +321,8 @@ class PokerGameServer:
         self.table_manager.hand_no += 1
         
         return self.get_game_state()
+    
+
 
     def execute_next_action(self):
         """Execute the next step in the current hand"""
@@ -257,10 +336,29 @@ class PokerGameServer:
         
         logger.info(f"Executing next action in phase: {self.current_hand.phase}")
         
+        # CRITICAL: Clear ALL MCP data from ALL players before EVERY action
+        # This prevents any data bleeding between players
+        for player in self.current_hand.players:
+            # Force clear all MCP attributes
+            player.hand_analysis = ""
+            player.opponent_stats = ""  
+            player.monte_carlo_result = ""
+            player.planning_reasoning = ""
+            
+            # Also remove attributes if they exist to prevent getattr fallbacks
+            if hasattr(player, 'hand_analysis'):
+                delattr(player, 'hand_analysis')
+            if hasattr(player, 'opponent_stats'):
+                delattr(player, 'opponent_stats')
+            if hasattr(player, 'monte_carlo_result'):
+                delattr(player, 'monte_carlo_result')
+            if hasattr(player, 'planning_reasoning'):
+                delattr(player, 'planning_reasoning')
+        
         try:
             result = self.current_hand.execute_next_step()
             logger.info(f"Step result: {result}")
-            
+                
             # If hand is complete, advance dealer button for next hand
             if self.current_hand.is_complete:
                 logger.info("Hand completed, advancing dealer button")
@@ -274,6 +372,9 @@ class PokerGameServer:
         except Exception as e:
             logger.error(f"Error executing next action: {e}", exc_info=True)
             return {"error": f"Failed to execute action: {str(e)}"}
+
+
+
 
     def auto_play_until_completion(self):
         """Run the game until completion using TableManager logic"""
@@ -388,15 +489,25 @@ class PokerGameServer:
         if hasattr(self.current_hand.game_state, 'current_player_index'):
             current_player_index = self.current_hand.game_state.current_player_index
             current_player = self.current_hand.game_state.get_current_player()
-            logger.info(f"DEBUG: current_player = {current_player.name if current_player else None}")
-            logger.info(f"DEBUG: current_player_index = {current_player_index}")
-            logger.info(f"DEBUG: hand phase = {self.current_hand.phase}")
                     
         # Convert players to frontend format
         players_data = []
         hand_players = self.current_hand.players
         
         for i, player in enumerate(hand_players):
+            # SAFE MCP DATA EXTRACTION - Always return strings, never None
+            hand_analysis_data = getattr(player, 'hand_analysis', '') or ''
+            opponent_stats_data = getattr(player, 'opponent_stats', '') or ''
+            monte_carlo_data = getattr(player, 'monte_carlo_result', '') or ''
+            
+            # Convert to strings if they're not already
+            if not isinstance(hand_analysis_data, str):
+                hand_analysis_data = str(hand_analysis_data) if hand_analysis_data else ''
+            if not isinstance(opponent_stats_data, str):
+                opponent_stats_data = str(opponent_stats_data) if opponent_stats_data else ''
+            if not isinstance(monte_carlo_data, str):
+                monte_carlo_data = str(monte_carlo_data) if monte_carlo_data else ''
+            
             # Get hole cards - convert Card objects to strings
             hole_cards = []
             if player.hole_cards:
@@ -408,12 +519,11 @@ class PokerGameServer:
             recent_actions = self.current_hand.game_state.get_player_actions(player.name)
             if recent_actions:
                 last_action_record = recent_actions[-1]
-                logger.info(f"DEBUG: {player.name} last action record: {last_action_record}")
                 
                 # Extract the action string properly
                 if hasattr(last_action_record.action, 'action_type'):
                     action_type = last_action_record.action.action_type
-                    if action_type.value == 'fold':  # Use .value to get the string
+                    if action_type.value == 'fold':
                         last_action = "Fold"
                     elif action_type.value == 'check':
                         last_action = "Check"
@@ -434,12 +544,10 @@ class PokerGameServer:
                 
                 # Get reasoning if available
                 if hasattr(last_action_record.action, 'reasons') and last_action_record.action.reasons:
-                    # The reasons should already have emoji prefixes from the agent
                     formatted_reasons = []
                     for reason in last_action_record.action.reasons:
                         reason = reason.strip()
                         if reason:
-                            # Ensure proper sentence ending
                             if not reason.endswith('.'):
                                 reason += '.'
                             formatted_reasons.append(reason)
@@ -453,7 +561,7 @@ class PokerGameServer:
             if hand_str and 'Sixs' in hand_str:
                 hand_str = hand_str.replace('Sixs', 'Sixes')
             
-            # Add MCP status info for debugging/display
+            # Add MCP status info
             is_mcp_agent = hasattr(player.agent, 'mcp_client')
             mcp_capabilities = []
             if is_mcp_agent and hasattr(player.agent, 'get_available_capabilities'):
@@ -468,20 +576,30 @@ class PokerGameServer:
                 "cards": hole_cards,
                 "action": last_action,
                 "reasoning": reasoning,
-                "planning": getattr(player, 'planning_reasoning', ''),
+                "planning": getattr(player, 'planning_reasoning', '') or '',
                 "hand": hand_str,
                 "active": player.is_active,
                 "currentBet": player.current_bet,
                 "isCurrentPlayer": player.name == (current_player.name if current_player else None),
                 "mcpEnabled": is_mcp_agent,
-                "mcpCapabilities": mcp_capabilities
+                "mcpCapabilities": mcp_capabilities,
+                "handAnalysis": hand_analysis_data,      # Always a string, never None
+                "monteCarloResult": monte_carlo_data,    # Always a string, never None
+                "opponentStats": opponent_stats_data     # Always a string, never None
             })
+            
+            # DEBUG: Log MCP data extraction
+            #if self.verbose:
+            logger.info(f"MCP data for {player.name}:")
+            logger.info(f"  handAnalysis: {repr(hand_analysis_data)}")
+            logger.info(f"  monteCarloResult: {repr(monte_carlo_data)}")
+            logger.info(f"  opponentStats: {repr(opponent_stats_data)}")
         
         # Convert board cards
         board_cards = []
         if hasattr(self.current_hand.game_state, 'board'):
             board_cards = [self._card_to_string(card) for card in self.current_hand.game_state.board]
-
+    
         return {
             "phase": phase_names.get(self.current_hand.phase, self.current_hand.phase),
             "pot": self.current_hand.game_state.pot,
@@ -611,6 +729,15 @@ def get_mcp_status():
     """Get MCP status information"""
     with game_lock:
         return jsonify(poker_game.get_mcp_status())
+    
+@app.route('/api/game/events')
+def stream_events():
+    """Server-sent events for real-time updates"""
+    def event_stream():
+        # This will be populated by the MCP calls
+        pass
+    
+    return Response(event_stream(), mimetype="text/plain")
 
 @app.route('/api/mcp/initialize', methods=['POST'])
 def initialize_mcp():

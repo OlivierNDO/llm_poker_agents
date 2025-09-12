@@ -1,7 +1,7 @@
 """
 feature_engineering.py
 """
-from typing import List, Sequence
+from typing import Sequence
 from collections import Counter
 from numba import njit
 import numpy as np
@@ -64,12 +64,6 @@ def best_board_pattern(board_ranks: Sequence[int], board_suits: Sequence[str]) -
 
 
 
-
-
-
-
-
-
 HAND_NAMES = (
     'high_card',
     'one_pair',
@@ -85,7 +79,7 @@ HAND_NAMES = (
 def best_hand_name(category_code: int) -> str:
     return HAND_NAMES[int(category_code)]
 
-@njit
+@njit(cache=True)
 def evaluate_best_hand(hole_ranks: np.ndarray,
                        board_ranks: np.ndarray,
                        hole_suits: np.ndarray,
@@ -312,7 +306,7 @@ def best_hand_string(hole_ranks: np.ndarray,
 
 
 
-@njit
+@njit(cache=True)
 def extract_hand_strength_scalar(hole_ranks: np.ndarray, board_ranks: np.ndarray, 
                                 hole_suits: np.ndarray, board_suits: np.ndarray) -> float:
     """
@@ -506,7 +500,7 @@ def extract_hand_strength_scalar(hole_ranks: np.ndarray, board_ranks: np.ndarray
 
 
 
-@njit
+@njit(cache=True)
 def calculate_flush_probability(
     hole_ranks: np.ndarray,
     hole_suits: np.ndarray, 
@@ -606,7 +600,7 @@ def calculate_flush_probability(
     return max_flush_prob
 
 
-@njit
+@njit(cache=True)
 def calculate_opponent_flush_probability(
     hole_ranks: np.ndarray,
     hole_suits: np.ndarray, 
@@ -616,7 +610,7 @@ def calculate_opponent_flush_probability(
 ) -> float:
     """
     Calculate probability that at least one opponent will have a flush by river.
-    Conservative approach focusing on most likely scenarios.
+    FIXED: Uses analytical approach instead of enumeration to avoid timeout.
     """
     # Count actual board cards
     actual_board_cards = 0
@@ -643,11 +637,11 @@ def calculate_opponent_flush_probability(
     remaining_deck_size = 52 - cards_seen
     board_cards_remaining = 5 - actual_board_cards
     
-    if remaining_deck_size <= 0 or num_opponents <= 0:
+    if remaining_deck_size <= 0 or num_opponents <= 0 or board_cards_remaining <= 0:
         return 0.0
     
-    # Find the suit with the highest flush potential for opponents
-    max_opponent_flush_prob = 0.0
+    # ANALYTICAL APPROACH: For each suit, calculate flush probability analytically
+    max_suit_flush_prob = 0.0
     
     for suit in range(4):
         total_suit_cards_seen = my_suit_counts[suit] + board_suit_counts[suit]
@@ -656,129 +650,331 @@ def calculate_opponent_flush_probability(
         if suit_cards_remaining < 2:  # Need at least 2 for any flush scenario
             continue
         
-        # Main scenario: Suited hole cards + board completes
+        # Calculate probability that at least one opponent makes a flush in this suit
         suit_flush_prob = 0.0
         
-        # Probability at least one opponent has suited hole cards of this suit
-        prob_one_suited = (
-            float(suit_cards_remaining) * float(suit_cards_remaining - 1) /
-            (float(remaining_deck_size) * float(remaining_deck_size - 1))
-        )
-        prob_at_least_one_suited = 1.0 - (1.0 - prob_one_suited) ** num_opponents
-        
-        # Given suited hole cards, probability board completes flush
-        total_with_suited = board_suit_counts[suit] + 2
-        need_from_board = max(0, 5 - total_with_suited)
-        
-        if need_from_board <= 0:
-            # Already flush with current board + suited hole cards
-            prob_board_completes = 1.0
-        elif need_from_board <= board_cards_remaining:
-            # Board needs to provide more cards
-            future_deck_size = remaining_deck_size - (num_opponents * 2)
-            future_suit_cards = suit_cards_remaining - 2  # After suited hole cards
+        # Scenario 1: Opponent has 2 suited hole cards of this suit
+        if suit_cards_remaining >= 2:
+            # Probability one opponent gets 2 cards of this suit
+            total_remaining = remaining_deck_size
+            prob_suited_hole = (float(suit_cards_remaining) * float(suit_cards_remaining - 1)) / \
+                              (float(total_remaining) * float(total_remaining - 1))
             
-            if future_deck_size > 0 and future_suit_cards >= need_from_board:
-                # FIXED: Use exact hypergeometric probability
-                if need_from_board == 1:
-                    # Need at least 1 more card of this suit from remaining board cards
-                    prob_no_target_cards = 1.0
-                    other_cards = future_deck_size - future_suit_cards
-                    for i in range(board_cards_remaining):
-                        prob_no_target_cards *= float(other_cards - i) / float(future_deck_size - i)
-                    prob_board_completes = 1.0 - prob_no_target_cards
-                elif need_from_board == 2:
-                    # Need exactly 2 more cards of this suit
-                    if future_suit_cards >= 2 and future_deck_size >= 2:
-                        prob_board_completes = (
-                            float(future_suit_cards) * float(future_suit_cards - 1) /
-                            (float(future_deck_size) * float(future_deck_size - 1))
-                        )
-                    else:
-                        prob_board_completes = 0.0
-                else:
-                    # Need 3+ cards - use hypergeometric but cap at reasonable value
-                    prob_board_completes = 0.0
-                    if need_from_board <= board_cards_remaining and future_suit_cards >= need_from_board:
-                        # Calculate exact hypergeometric probability
-                        ways_success = 1
-                        for i in range(need_from_board):
-                            ways_success = ways_success * (future_suit_cards - i) // (i + 1)
-                        
-                        ways_failure = 1
-                        need_other = board_cards_remaining - need_from_board
-                        other_cards = future_deck_size - future_suit_cards
-                        for i in range(need_other):
-                            ways_failure = ways_failure * (other_cards - i) // (i + 1)
-                        
-                        total_ways = 1
-                        for i in range(board_cards_remaining):
-                            total_ways = total_ways * (future_deck_size - i) // (i + 1)
-                        
-                        if total_ways > 0:
-                            prob_board_completes = float(ways_success * ways_failure) / float(total_ways)
-                        else:
-                            prob_board_completes = 0.0
-                    else:
-                        prob_board_completes = 0.0
+            # Probability at least one opponent gets suited hole cards
+            prob_at_least_one_suited = 1.0 - (1.0 - prob_suited_hole) ** num_opponents
+            
+            # Given suited hole cards, what's needed on board?
+            cards_from_hole = 2
+            cards_on_board = board_suit_counts[suit]
+            total_with_hole = cards_from_hole + cards_on_board
+            
+            if total_with_hole >= 5:
+                # Already have flush with hole cards + current board
+                suit_flush_prob = prob_at_least_one_suited
             else:
-                prob_board_completes = 0.0
-        else:
-            prob_board_completes = 0.0
+                # Need more cards from future board
+                need_from_board = 5 - total_with_hole
+                
+                if need_from_board <= board_cards_remaining:
+                    # Calculate probability board provides enough cards
+                    remaining_after_holes = remaining_deck_size - (num_opponents * 2)
+                    remaining_suit_cards = suit_cards_remaining - 2  # After suited hole cards
+                    
+                    if remaining_after_holes > 0 and remaining_suit_cards >= need_from_board:
+                        # Use hypergeometric probability
+                        prob_board_provides = 0.0
+                        
+                        if need_from_board == 1:
+                            # Need at least 1 more of this suit
+                            prob_none = 1.0
+                            other_cards = remaining_after_holes - remaining_suit_cards
+                            for i in range(board_cards_remaining):
+                                if other_cards - i > 0 and remaining_after_holes - i > 0:
+                                    prob_none *= float(other_cards - i) / float(remaining_after_holes - i)
+                                else:
+                                    prob_none = 0.0
+                                    break
+                            prob_board_provides = 1.0 - prob_none
+                            
+                        elif need_from_board == 2:
+                            # Need at least 2 more of this suit
+                            if remaining_suit_cards >= 2 and remaining_after_holes >= 2:
+                                # Probability of getting exactly 2 in first 2 cards
+                                if board_cards_remaining >= 2:
+                                    prob_board_provides = (float(remaining_suit_cards) * float(remaining_suit_cards - 1)) / \
+                                                        (float(remaining_after_holes) * float(remaining_after_holes - 1))
+                                    
+                                    # Add probability of getting 2+ in more cards if available
+                                    if board_cards_remaining > 2:
+                                        # This is getting complex, use conservative estimate
+                                        prob_board_provides = min(1.0, prob_board_provides * 1.5)
+                        
+                        elif need_from_board == 3:
+                            # Need 3 more - very unlikely, use conservative estimate
+                            if remaining_suit_cards >= 3 and remaining_after_holes >= 3 and board_cards_remaining >= 3:
+                                prob_board_provides = (float(remaining_suit_cards) / float(remaining_after_holes)) ** 3 * 0.5
+                        
+                        suit_flush_prob = prob_at_least_one_suited * prob_board_provides
         
-        suit_flush_prob = prob_at_least_one_suited * prob_board_completes
-        
-        # Also consider single card + 4-card board scenario (but more conservatively)
-        if board_suit_counts[suit] + board_cards_remaining >= 4 and board_suit_counts[suit] >= 2:
-            # Only consider if board already has 2+ of this suit
-            need_board_total = 4
-            need_from_future = max(0, need_board_total - board_suit_counts[suit])
+        # Scenario 2: Opponent has 1 suited hole card + board develops flush
+        # This is more complex and less likely, so we'll use a conservative estimate
+        if board_suit_counts[suit] >= 2 and board_cards_remaining >= 2:
+            # Board already has 2+ of this suit and can get to 4+
+            need_board_total = 4  # Need 4 on board for 1-card flush
+            current_board_of_suit = board_suit_counts[suit]
+            need_more_on_board = max(0, need_board_total - current_board_of_suit)
             
-            if need_from_future <= board_cards_remaining and suit_cards_remaining >= 1:
-                # Probability one opponent has exactly 1 of this suit
-                prob_one_card = (
-                    2.0 * float(suit_cards_remaining) * float(remaining_deck_size - suit_cards_remaining) /
-                    (float(remaining_deck_size) * float(remaining_deck_size - 1))
-                )
-                prob_someone_has_one = 1.0 - (1.0 - prob_one_card) ** num_opponents
+            if need_more_on_board <= board_cards_remaining and suit_cards_remaining >= 1:
+                # Probability opponent has 1 card of this suit
+                other_cards = remaining_deck_size - suit_cards_remaining
+                prob_one_suited = (2.0 * float(suit_cards_remaining) * float(other_cards)) / \
+                                 (float(remaining_deck_size) * float(remaining_deck_size - 1))
+                prob_at_least_one_has_one = 1.0 - (1.0 - prob_one_suited) ** num_opponents
                 
-                # Conservative estimate: board gets exactly what's needed
-                if need_from_future == 0:
-                    prob_board_cooperates = 1.0
-                elif need_from_future == 1:
-                    future_deck_size = remaining_deck_size - (num_opponents * 2)
-                    future_suit_cards = suit_cards_remaining - 1
-                    if future_deck_size > 0:
-                        prob_board_cooperates = float(future_suit_cards) / float(future_deck_size)
-                    else:
-                        prob_board_cooperates = 0.0
-                elif need_from_future == 2:
-                    future_deck_size = remaining_deck_size - (num_opponents * 2)
-                    future_suit_cards = suit_cards_remaining - 1
-                    if future_deck_size >= 2 and future_suit_cards >= 2:
-                        prob_board_cooperates = (
-                            float(future_suit_cards) * float(future_suit_cards - 1) /
-                            (float(future_deck_size) * float(future_deck_size - 1))
-                        )
-                    else:
-                        prob_board_cooperates = 0.0
-                else:
-                    prob_board_cooperates = 0.0
+                # Probability board develops to 4 of this suit
+                remaining_after_holes = remaining_deck_size - (num_opponents * 2)
+                remaining_suit_after_hole = suit_cards_remaining - 1  # Assuming opponent has 1
                 
-                single_card_prob = prob_someone_has_one * prob_board_cooperates
+                prob_board_develops = 0.0
+                if remaining_after_holes > 0 and remaining_suit_after_hole >= need_more_on_board:
+                    if need_more_on_board == 1:
+                        prob_board_develops = float(remaining_suit_after_hole) / float(remaining_after_holes)
+                    elif need_more_on_board == 2:
+                        if remaining_after_holes >= 2:
+                            prob_board_develops = (float(remaining_suit_after_hole) * float(remaining_suit_after_hole - 1)) / \
+                                                (float(remaining_after_holes) * float(remaining_after_holes - 1))
                 
-                # Add to suit probability (capped to avoid double-counting)
-                suit_flush_prob = min(1.0, suit_flush_prob + single_card_prob * 0.3)  # Further discount
+                # Add this scenario (but don't double-count with scenario 1)
+                scenario2_prob = prob_at_least_one_has_one * prob_board_develops * 0.5  # Conservative to avoid overlap
+                suit_flush_prob = max(suit_flush_prob, scenario2_prob)
         
-        max_opponent_flush_prob = max(max_opponent_flush_prob, suit_flush_prob)
+        max_suit_flush_prob = max(max_suit_flush_prob, suit_flush_prob)
     
-    return max_opponent_flush_prob
+    return min(1.0, max_suit_flush_prob)
 
 
 
+@njit(cache=True)
+def calculate_opponent_straight_probability(
+    hole_ranks: np.ndarray,
+    hole_suits: np.ndarray, 
+    board_ranks: np.ndarray,
+    board_suits: np.ndarray,
+    num_opponents: int
+) -> float:
+    """
+    Calculate probability analytically by enumerating what the Monte Carlo does.
+    """
+    if num_opponents <= 0:
+        return 0.0
+    
+    # Count actual board cards
+    actual_board_cards = 0
+    for i in range(len(board_ranks)):
+        if board_ranks[i] > 1:
+            actual_board_cards += 1
+    
+    board_cards_remaining = 5 - actual_board_cards
+    
+    # Count available cards by rank
+    available_by_rank = np.zeros(15, dtype=np.int32)
+    for rank in range(2, 15):
+        available_by_rank[rank] = 4
+    
+    # Subtract my hole cards
+    for r in hole_ranks:
+        if r > 1:
+            available_by_rank[r] -= 1
+    
+    # Subtract board cards
+    for i in range(len(board_ranks)):
+        if i < len(board_ranks) and board_ranks[i] > 1:
+            available_by_rank[board_ranks[i]] -= 1
+    
+    # Calculate total remaining cards
+    total_remaining = 0
+    for rank in range(2, 15):
+        total_remaining += available_by_rank[rank]
+    
+    if total_remaining < 2 * num_opponents + board_cards_remaining:
+        return 0.0
+    
+    # Get current board ranks
+    current_board = np.zeros(5, dtype=np.int32)
+    board_size = 0
+    for i in range(len(board_ranks)):
+        if i < len(board_ranks) and board_ranks[i] > 1:
+            current_board[board_size] = board_ranks[i]
+            board_size += 1
+    
+    # Function to check if ranks contain a straight
+    def has_straight_ranks(ranks, num_ranks):
+        # Create rank presence array
+        rank_present = np.zeros(15, dtype=np.uint8)
+        for i in range(num_ranks):
+            if ranks[i] > 1:
+                rank_present[ranks[i]] = 1
+        
+        # Check normal straights (2-3-4-5-6 through T-J-Q-K-A)
+        for low in range(2, 11):
+            consecutive = 0
+            for j in range(5):
+                if rank_present[low + j] == 1:
+                    consecutive += 1
+            if consecutive == 5:
+                return True
+        
+        # Check wheel (A-2-3-4-5)
+        wheel_count = 0
+        if rank_present[14] == 1:  # Ace
+            wheel_count += 1
+        for rank in range(2, 6):  # 2,3,4,5
+            if rank_present[rank] == 1:
+                wheel_count += 1
+        if wheel_count == 5:
+            return True
+        
+        return False
+    
+    # Calculate single opponent success probability
+    single_opponent_success = 0.0
+    
+    # Enumerate possible opponent hole card combinations
+    for rank1 in range(2, 15):
+        for rank2 in range(rank1, 15):  # rank2 >= rank1 to avoid duplicates
+            avail1 = available_by_rank[rank1]
+            avail2 = available_by_rank[rank2]
+            
+            if avail1 <= 0 or avail2 <= 0:
+                continue
+            
+            # Calculate probability of this hole card combination
+            if rank1 == rank2:
+                # Pocket pair
+                if avail1 < 2:
+                    continue
+                prob_hole = (float(avail1) / float(total_remaining)) * \
+                           (float(avail1 - 1) / float(total_remaining - 1))
+            else:
+                # Different ranks  
+                prob_hole = 2.0 * (float(avail1) / float(total_remaining)) * \
+                           (float(avail2) / float(total_remaining - 1))
+            
+            # Create test hand with these hole cards
+            test_hand = np.zeros(7, dtype=np.int32)
+            test_hand[0] = rank1
+            test_hand[1] = rank2
+            
+            # Add current board
+            for i in range(board_size):
+                test_hand[2 + i] = current_board[i]
+            
+            # Calculate probability this leads to a straight
+            if board_cards_remaining == 0:
+                # River case - just check current hand
+                if has_straight_ranks(test_hand, 2 + board_size):
+                    single_opponent_success += prob_hole
+            
+            elif board_cards_remaining == 1:
+                # Turn case - check all possible river cards
+                remaining_after_hole = total_remaining - 2
+                straight_outcomes = 0
+                total_outcomes = 0
+                
+                for river_rank in range(2, 15):
+                    river_avail = available_by_rank[river_rank]
+                    
+                    # Adjust for hole cards used
+                    if river_rank == rank1:
+                        if rank1 == rank2:
+                            river_avail -= 2
+                        else:
+                            river_avail -= 1
+                    elif river_rank == rank2:
+                        river_avail -= 1
+                    
+                    if river_avail > 0:
+                        total_outcomes += river_avail
+                        
+                        # Test this river card
+                        test_hand[2 + board_size] = river_rank
+                        if has_straight_ranks(test_hand, 2 + board_size + 1):
+                            straight_outcomes += river_avail
+                
+                if total_outcomes > 0:
+                    prob_river_helps = float(straight_outcomes) / float(total_outcomes)
+                    single_opponent_success += prob_hole * prob_river_helps
+            
+            elif board_cards_remaining == 2:
+                # Flop case - sample turn/river combinations
+                remaining_after_hole = total_remaining - 2
+                
+                if remaining_after_hole < 2:
+                    continue
+                
+                helpful_combinations = 0.0
+                total_combinations = 0.0
+                
+                # Sample key turn/river combinations
+                for turn_rank in range(2, 15):
+                    turn_avail = available_by_rank[turn_rank]
+                    
+                    # Adjust for hole cards
+                    if turn_rank == rank1:
+                        if rank1 == rank2:
+                            turn_avail -= 2
+                        else:
+                            turn_avail -= 1
+                    elif turn_rank == rank2:
+                        turn_avail -= 1
+                    
+                    if turn_avail <= 0:
+                        continue
+                    
+                    for river_rank in range(2, 15):
+                        river_avail = available_by_rank[river_rank]
+                        
+                        # Adjust for hole cards and turn card
+                        if river_rank == rank1:
+                            if rank1 == rank2:
+                                river_avail -= 2
+                            else:
+                                river_avail -= 1
+                        elif river_rank == rank2:
+                            river_avail -= 1
+                        
+                        if river_rank == turn_rank:
+                            river_avail -= 1
+                        
+                        if river_avail <= 0:
+                            continue
+                        
+                        # Weight by probability of this combination
+                        combo_weight = float(turn_avail * river_avail)
+                        total_combinations += combo_weight
+                        
+                        # Test if this makes a straight
+                        test_hand[2 + board_size] = turn_rank
+                        test_hand[2 + board_size + 1] = river_rank
+                        if has_straight_ranks(test_hand, 2 + board_size + 2):
+                            helpful_combinations += combo_weight
+                
+                if total_combinations > 0.0:
+                    prob_board_helps = helpful_combinations / total_combinations
+                    single_opponent_success += prob_hole * prob_board_helps
+    
+    # Cap single opponent probability
+    if single_opponent_success > 1.0:
+        single_opponent_success = 1.0
+    
+    # Calculate final probability for multiple opponents
+    prob_all_fail = (1.0 - single_opponent_success) ** num_opponents
+    final_prob = 1.0 - prob_all_fail
+    
+    return final_prob
 
 
-@njit
+@njit(cache=True)
 def calculate_straight_probability(
     hole_ranks: np.ndarray,
     hole_suits: np.ndarray, 
@@ -1008,228 +1204,6 @@ def calculate_straight_probability(
 
 
 
-@njit
-def calculate_opponent_straight_probability(
-    hole_ranks: np.ndarray,
-    hole_suits: np.ndarray, 
-    board_ranks: np.ndarray,
-    board_suits: np.ndarray,
-    num_opponents: int
-) -> float:
-    """
-    Calculate probability analytically by enumerating what the Monte Carlo does.
-    """
-    if num_opponents <= 0:
-        return 0.0
-    
-    # Count actual board cards
-    actual_board_cards = 0
-    for i in range(len(board_ranks)):
-        if board_ranks[i] > 1:
-            actual_board_cards += 1
-    
-    board_cards_remaining = 5 - actual_board_cards
-    
-    # Count available cards by rank
-    available_by_rank = np.zeros(15, dtype=np.int32)
-    for rank in range(2, 15):
-        available_by_rank[rank] = 4
-    
-    # Subtract my hole cards
-    for r in hole_ranks:
-        if r > 1:
-            available_by_rank[r] -= 1
-    
-    # Subtract board cards
-    for i in range(len(board_ranks)):
-        if i < len(board_ranks) and board_ranks[i] > 1:
-            available_by_rank[board_ranks[i]] -= 1
-    
-    # Calculate total remaining cards
-    total_remaining = 0
-    for rank in range(2, 15):
-        total_remaining += available_by_rank[rank]
-    
-    if total_remaining < 2 * num_opponents + board_cards_remaining:
-        return 0.0
-    
-    # Get current board ranks
-    current_board = np.zeros(5, dtype=np.int32)
-    board_size = 0
-    for i in range(len(board_ranks)):
-        if i < len(board_ranks) and board_ranks[i] > 1:
-            current_board[board_size] = board_ranks[i]
-            board_size += 1
-    
-    # Function to check if ranks contain a straight
-    def has_straight_ranks(ranks, num_ranks):
-        # Create rank presence array
-        rank_present = np.zeros(15, dtype=np.uint8)
-        for i in range(num_ranks):
-            if ranks[i] > 1:
-                rank_present[ranks[i]] = 1
-        
-        # Check normal straights (2-3-4-5-6 through T-J-Q-K-A)
-        for low in range(2, 11):
-            consecutive = 0
-            for j in range(5):
-                if rank_present[low + j] == 1:
-                    consecutive += 1
-            if consecutive == 5:
-                return True
-        
-        # Check wheel (A-2-3-4-5)
-        wheel_count = 0
-        if rank_present[14] == 1:  # Ace
-            wheel_count += 1
-        for rank in range(2, 6):  # 2,3,4,5
-            if rank_present[rank] == 1:
-                wheel_count += 1
-        if wheel_count == 5:
-            return True
-        
-        return False
-    
-    # Calculate single opponent success probability
-    single_opponent_success = 0.0
-    
-    # Enumerate possible opponent hole card combinations
-    for rank1 in range(2, 15):
-        for rank2 in range(rank1, 15):  # rank2 >= rank1 to avoid duplicates
-            avail1 = available_by_rank[rank1]
-            avail2 = available_by_rank[rank2]
-            
-            if avail1 <= 0 or avail2 <= 0:
-                continue
-            
-            # Calculate probability of this hole card combination
-            if rank1 == rank2:
-                # Pocket pair
-                if avail1 < 2:
-                    continue
-                prob_hole = (float(avail1) / float(total_remaining)) * \
-                           (float(avail1 - 1) / float(total_remaining - 1))
-            else:
-                # Different ranks  
-                prob_hole = 2.0 * (float(avail1) / float(total_remaining)) * \
-                           (float(avail2) / float(total_remaining - 1))
-            
-            # Create test hand with these hole cards
-            test_hand = np.zeros(7, dtype=np.int32)
-            test_hand[0] = rank1
-            test_hand[1] = rank2
-            
-            # Add current board
-            for i in range(board_size):
-                test_hand[2 + i] = current_board[i]
-            
-            # Calculate probability this leads to a straight
-            if board_cards_remaining == 0:
-                # River case - just check current hand
-                if has_straight_ranks(test_hand, 2 + board_size):
-                    single_opponent_success += prob_hole
-            
-            elif board_cards_remaining == 1:
-                # Turn case - check all possible river cards
-                remaining_after_hole = total_remaining - 2
-                straight_outcomes = 0
-                total_outcomes = 0
-                
-                for river_rank in range(2, 15):
-                    river_avail = available_by_rank[river_rank]
-                    
-                    # Adjust for hole cards used
-                    if river_rank == rank1:
-                        if rank1 == rank2:
-                            river_avail -= 2
-                        else:
-                            river_avail -= 1
-                    elif river_rank == rank2:
-                        river_avail -= 1
-                    
-                    if river_avail > 0:
-                        total_outcomes += river_avail
-                        
-                        # Test this river card
-                        test_hand[2 + board_size] = river_rank
-                        if has_straight_ranks(test_hand, 2 + board_size + 1):
-                            straight_outcomes += river_avail
-                
-                if total_outcomes > 0:
-                    prob_river_helps = float(straight_outcomes) / float(total_outcomes)
-                    single_opponent_success += prob_hole * prob_river_helps
-            
-            elif board_cards_remaining == 2:
-                # Flop case - sample turn/river combinations
-                remaining_after_hole = total_remaining - 2
-                
-                if remaining_after_hole < 2:
-                    continue
-                
-                helpful_combinations = 0.0
-                total_combinations = 0.0
-                
-                # Sample key turn/river combinations
-                for turn_rank in range(2, 15):
-                    turn_avail = available_by_rank[turn_rank]
-                    
-                    # Adjust for hole cards
-                    if turn_rank == rank1:
-                        if rank1 == rank2:
-                            turn_avail -= 2
-                        else:
-                            turn_avail -= 1
-                    elif turn_rank == rank2:
-                        turn_avail -= 1
-                    
-                    if turn_avail <= 0:
-                        continue
-                    
-                    for river_rank in range(2, 15):
-                        river_avail = available_by_rank[river_rank]
-                        
-                        # Adjust for hole cards and turn card
-                        if river_rank == rank1:
-                            if rank1 == rank2:
-                                river_avail -= 2
-                            else:
-                                river_avail -= 1
-                        elif river_rank == rank2:
-                            river_avail -= 1
-                        
-                        if river_rank == turn_rank:
-                            river_avail -= 1
-                        
-                        if river_avail <= 0:
-                            continue
-                        
-                        # Weight by probability of this combination
-                        combo_weight = float(turn_avail * river_avail)
-                        total_combinations += combo_weight
-                        
-                        # Test if this makes a straight
-                        test_hand[2 + board_size] = turn_rank
-                        test_hand[2 + board_size + 1] = river_rank
-                        if has_straight_ranks(test_hand, 2 + board_size + 2):
-                            helpful_combinations += combo_weight
-                
-                if total_combinations > 0.0:
-                    prob_board_helps = helpful_combinations / total_combinations
-                    single_opponent_success += prob_hole * prob_board_helps
-    
-    # Cap single opponent probability
-    if single_opponent_success > 1.0:
-        single_opponent_success = 1.0
-    
-    # Calculate final probability for multiple opponents
-    prob_all_fail = (1.0 - single_opponent_success) ** num_opponents
-    final_prob = 1.0 - prob_all_fail
-    
-    return final_prob
-
-
-
-
 def parse_card(card_str: str) -> tuple[int, int]:
     rank_str_to_int = {
         '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
@@ -1245,3 +1219,208 @@ def parse_card(card_str: str) -> tuple[int, int]:
 
 
 
+
+def get_preflop_ranking(high_rank: int, low_rank: int, suited: bool) -> int:
+    """Get exact preflop ranking (1-169) based on standard poker hand rankings"""
+    
+    # Complete ranking table for all 169 possible starting hands
+    # Based on Sklansky-Malmuth rankings with adjustments for modern play
+    rankings = {
+        # Pocket pairs (1-13)
+        (14, 14): 1,   # AA
+        (13, 13): 2,   # KK  
+        (12, 12): 3,   # QQ
+        (11, 11): 4,   # JJ
+        (10, 10): 5,   # TT
+        (9, 9): 6,     # 99
+        (8, 8): 7,     # 88
+        (7, 7): 8,     # 77
+        (6, 6): 9,     # 66
+        (5, 5): 10,    # 55
+        (4, 4): 11,    # 44
+        (3, 3): 12,    # 33
+        (2, 2): 13,    # 22
+        
+        # Suited hands (14-91)
+        (14, 13, True): 14,  # AKs
+        (14, 12, True): 15,  # AQs
+        (14, 11, True): 16,  # AJs
+        (13, 12, True): 17,  # KQs
+        (14, 10, True): 18,  # ATs
+        (14, 9, True): 19,   # A9s
+        (13, 11, True): 20,  # KJs
+        (12, 11, True): 21,  # QJs
+        (13, 10, True): 22,  # KTs
+        (14, 8, True): 23,   # A8s
+        (12, 10, True): 24,  # QTs
+        (11, 10, True): 25,  # JTs
+        (14, 7, True): 26,   # A7s
+        (13, 9, True): 27,   # K9s
+        (11, 9, True): 28,   # J9s
+        (10, 9, True): 29,   # T9s
+        (14, 6, True): 30,   # A6s
+        (12, 9, True): 31,   # Q9s
+        (14, 5, True): 32,   # A5s
+        (14, 4, True): 33,   # A4s
+        (13, 8, True): 34,   # K8s
+        (14, 3, True): 35,   # A3s
+        (12, 8, True): 36,   # Q8s
+        (11, 8, True): 37,   # J8s
+        (14, 2, True): 38,   # A2s
+        (9, 8, True): 39,    # 98s
+        (10, 8, True): 40,   # T8s
+        (13, 7, True): 41,   # K7s
+        (12, 7, True): 42,   # Q7s
+        (13, 6, True): 43,   # K6s
+        (11, 7, True): 44,   # J7s
+        (10, 7, True): 45,   # T7s
+        (13, 5, True): 46,   # K5s
+        (12, 6, True): 47,   # Q6s
+        (13, 4, True): 48,   # K4s
+        (9, 7, True): 49,    # 97s
+        (13, 3, True): 50,   # K3s
+        (11, 6, True): 51,   # J6s
+        (13, 2, True): 52,   # K2s
+        (12, 5, True): 53,   # Q5s
+        (10, 6, True): 54,   # T6s
+        (12, 4, True): 55,   # Q4s
+        (11, 5, True): 56,   # J5s
+        (9, 6, True): 57,    # 96s
+        (12, 3, True): 58,   # Q3s
+        (8, 7, True): 59,    # 87s
+        (12, 2, True): 60,   # Q2s
+        (10, 5, True): 61,   # T5s
+        (11, 4, True): 62,   # J4s
+        (9, 5, True): 63,    # 95s
+        (11, 3, True): 64,   # J3s
+        (8, 6, True): 65,    # 86s
+        (10, 4, True): 66,   # T4s
+        (11, 2, True): 67,   # J2s
+        (9, 4, True): 68,    # 94s
+        (8, 5, True): 69,    # 85s
+        (10, 3, True): 70,   # T3s
+        (7, 6, True): 71,    # 76s
+        (9, 3, True): 72,    # 93s
+        (8, 4, True): 73,    # 84s
+        (10, 2, True): 74,   # T2s
+        (7, 5, True): 75,    # 75s
+        (9, 2, True): 76,    # 92s
+        (8, 3, True): 77,    # 83s
+        (6, 5, True): 78,    # 65s
+        (7, 4, True): 79,    # 74s
+        (8, 2, True): 80,    # 82s
+        (6, 4, True): 81,    # 64s
+        (7, 3, True): 82,    # 73s
+        (5, 4, True): 83,    # 54s
+        (7, 2, True): 84,    # 72s
+        (6, 3, True): 85,    # 63s
+        (5, 3, True): 86,    # 53s
+        (6, 2, True): 87,    # 62s
+        (4, 3, True): 88,    # 43s
+        (5, 2, True): 89,    # 52s
+        (4, 2, True): 90,    # 42s
+        (3, 2, True): 91,    # 32s
+        
+        # Offsuit hands (92-169)
+        (14, 13, False): 92,  # AKo
+        (14, 12, False): 93,  # AQo
+        (14, 11, False): 94,  # AJo
+        (13, 12, False): 95,  # KQo
+        (14, 10, False): 96,  # ATo
+        (13, 11, False): 97,  # KJo
+        (12, 11, False): 98,  # QJo
+        (14, 9, False): 99,   # A9o
+        (13, 10, False): 100, # KTo
+        (12, 10, False): 101, # QTo
+        (11, 10, False): 102, # JTo
+        (14, 8, False): 103,  # A8o
+        (13, 9, False): 104,  # K9o
+        (12, 9, False): 105,  # Q9o
+        (11, 9, False): 106,  # J9o
+        (10, 9, False): 107,  # T9o
+        (14, 7, False): 108,  # A7o
+        (13, 8, False): 109,  # K8o
+        (12, 8, False): 110,  # Q8o
+        (11, 8, False): 111,  # J8o
+        (14, 6, False): 112,  # A6o
+        (10, 8, False): 113,  # T8o
+        (9, 8, False): 114,   # 98o
+        (14, 5, False): 115,  # A5o
+        (13, 7, False): 116,  # K7o
+        (12, 7, False): 117,  # Q7o
+        (11, 7, False): 118,  # J7o
+        (14, 4, False): 119,  # A4o
+        (10, 7, False): 120,  # T7o
+        (13, 6, False): 121,  # K6o
+        (9, 7, False): 122,   # 97o
+        (14, 3, False): 123,  # A3o
+        (12, 6, False): 124,  # Q6o
+        (11, 6, False): 125,  # J6o
+        (14, 2, False): 126,  # A2o
+        (13, 5, False): 127,  # K5o
+        (10, 6, False): 128,  # T6o
+        (12, 5, False): 129,  # Q5o
+        (9, 6, False): 130,   # 96o
+        (13, 4, False): 131,  # K4o
+        (11, 5, False): 132,  # J5o
+        (8, 7, False): 133,   # 87o
+        (12, 4, False): 134,  # Q4o
+        (10, 5, False): 135,  # T5o
+        (13, 3, False): 136,  # K3o
+        (9, 5, False): 137,   # 95o
+        (8, 6, False): 138,   # 86o
+        (12, 3, False): 139,  # Q3o
+        (11, 4, False): 140,  # J4o
+        (13, 2, False): 141,  # K2o
+        (10, 4, False): 142,  # T4o
+        (9, 4, False): 143,   # 94o
+        (8, 5, False): 144,   # 85o
+        (12, 2, False): 145,  # Q2o
+        (7, 6, False): 146,   # 76o
+        (11, 3, False): 147,  # J3o
+        (10, 3, False): 148,  # T3o
+        (9, 3, False): 149,   # 93o
+        (8, 4, False): 150,   # 84o
+        (7, 5, False): 151,   # 75o
+        (11, 2, False): 152,  # J2o
+        (6, 5, False): 153,   # 65o
+        (10, 2, False): 154,  # T2o
+        (8, 3, False): 155,   # 83o
+        (9, 2, False): 156,   # 92o
+        (7, 4, False): 157,   # 74o
+        (6, 4, False): 158,   # 64o
+        (8, 2, False): 159,   # 82o
+        (5, 4, False): 160,   # 54o
+        (7, 3, False): 161,   # 73o
+        (6, 3, False): 162,   # 63o
+        (7, 2, False): 163,   # 72o
+        (5, 3, False): 164,   # 53o
+        (6, 2, False): 165,   # 62o
+        (4, 3, False): 166,   # 43o
+        (5, 2, False): 167,   # 52o
+        (4, 2, False): 168,   # 42o
+        (3, 2, False): 169,   # 32o
+    }
+    
+    
+    # Always order ranks high > low
+    if low_rank > high_rank:
+        high_rank, low_rank = low_rank, high_rank
+
+    # Build lookup key
+    if high_rank == low_rank:
+        key = (high_rank, low_rank)
+    else:
+        key = (high_rank, low_rank, suited)
+
+    return rankings.get(key, 169)  # Default to worst ranking if not found
+
+
+
+def format_ordinal(n: int) -> str:
+    """Convert number to ordinal (1st, 2nd, 3rd, etc.)"""
+    if 10 <= n % 100 <= 20:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return f"{n}{suffix}"

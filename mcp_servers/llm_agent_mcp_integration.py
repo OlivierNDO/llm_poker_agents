@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any
 from src.poker_types import ActionType, Action
 from src.agent_utils import OpenRouterCompletionEngine, card_to_str
 from src.logging_config import logger
+import src.feature_engineering as fe
 
 # Import MCP client
 try:
@@ -132,24 +133,28 @@ class LLMAgentMCP:
         stats_tracker: Optional['StatsTracker'] = None,
         monte_carlo_tracker = None
     ) -> Action:
-        """Complete MCP-enabled decision making process"""
+        """Complete MCP-enabled decision making process with proper data isolation"""
         
-        # Clear any previous planning reasoning at the start
+        # FORCE INITIALIZE - Set attributes directly, don't rely on clearing
+        player.hand_analysis = ""
+        player.opponent_stats = ""
+        player.monte_carlo_result = ""
         player.planning_reasoning = ""
+        
+        if self.verbose:
+            self.logger.info(f"{self.name}: Starting decision process with clean slate")
         
         # Ensure MCP is initialized
         if not self.mcp_client:
             await self.initialize_mcp()
     
-        # Three-stage process: Planning → Information Gathering → Decision
+        # Three-stage process
         planning_decision = await self._get_planning_decision_mcp(player, game_state, valid_actions, monte_carlo_tracker)
         gathered_info = await self._gather_information_mcp(planning_decision, player, game_state, stats_tracker, monte_carlo_tracker)
         final_action = await self._make_betting_decision_mcp(player, game_state, valid_actions, gathered_info)
         
-        # NEW: Store planning reasoning on the player for UI display
+        # Store planning reasoning
         planning_reasons = planning_decision.get("reasoning", [])
-        
-        # Create utilities summary with HTML breaks
         utilities_lines = ["Utilities Called:"]
         if planning_decision.get('need_hand_analysis', False):
             utilities_lines.append("• Hand Analysis")
@@ -158,24 +163,25 @@ class LLMAgentMCP:
         if planning_decision.get('need_opponent_stats', False):
             utilities_lines.append("• Opponent Stats")
         
-        if len(utilities_lines) == 1:  # Only the header was added
+        if len(utilities_lines) == 1:
             utilities_lines.append("• None")
         
-        # Join utilities with HTML breaks
         utilities_summary = "<br>".join(utilities_lines)
-        
-        # Combine with reasoning
         planning_parts = [utilities_summary]
         if planning_reasons:
             planning_parts.extend(planning_reasons)
         
-        # Store on player object for UI access
-        if planning_parts:
-            player.planning_reasoning = ". ".join(planning_parts)
-        else:
-            player.planning_reasoning = "No planning provided."
+        player.planning_reasoning = ". ".join(planning_parts) if planning_parts else "No planning provided."
+        
+        # FINAL SAFETY CHECK - Log what we're ending up with
+        #if self.verbose:
+        self.logger.info(f"{self.name}: FINAL MCP DATA CHECK:")
+        self.logger.info(f"  hand_analysis: {repr(getattr(player, 'hand_analysis', 'MISSING'))}")
+        self.logger.info(f"  opponent_stats: {repr(getattr(player, 'opponent_stats', 'MISSING'))}")
+        self.logger.info(f"  monte_carlo_result: {repr(getattr(player, 'monte_carlo_result', 'MISSING'))}")
         
         return final_action
+
 
     async def _get_planning_decision_mcp(
         self,
@@ -277,13 +283,13 @@ class LLMAgentMCP:
         player: 'Player',
         game_state: 'GameState',
         stats_tracker: Optional['StatsTracker'],
-        monte_carlo_tracker = None  # ADD THIS PARAMETER
+        monte_carlo_tracker = None
     ) -> dict:
-        """MCP-enabled information gathering with usage tracking"""
+        """MCP-enabled information gathering with proper data isolation"""
         
         gathered = {}
         
-        # Hand analysis via MCP (unchanged)
+        # Hand analysis via MCP - ONLY if requested
         if planning_decision.get("need_hand_analysis", False) and self.mcp_client:
             try:
                 hole_cards = [card_to_str(c) for c in player.hole_cards] if player.hole_cards else []
@@ -292,56 +298,64 @@ class LLMAgentMCP:
                 
                 if "comprehensive_hand_analysis" in self.available_capabilities:
                     analysis = await self.mcp_client.get_hand_analysis(hole_cards, board_cards, num_opponents)
-                    if analysis:
+                    if analysis and analysis.strip():  # Only store if we got real data
                         gathered["hand_analysis"] = analysis
+                        player.hand_analysis = analysis
+                        
                         if self.verbose:
-                            self.logger.info(f"{self.name}: Gathered comprehensive hand analysis")
+                            self.logger.info(f"{self.name}: HAND ANALYSIS SUCCESS:")
+                            self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Opponents: {num_opponents}")
+                            self.logger.info(f"  Analysis: {analysis[:100]}...")
+                    else:
+                        if self.verbose:
+                            self.logger.warning(f"{self.name}: Hand analysis returned empty result")
                 
             except Exception as e:
                 if self.verbose:
                     self.logger.error(f"{self.name}: Hand analysis MCP failed: {e}")
     
-        # Opponent stats via direct StatsTracker (unchanged)
+        # Opponent stats via direct StatsTracker - ONLY if requested
         if planning_decision.get("need_opponent_stats", False) and stats_tracker:
             try:
                 opponent_stats = stats_tracker.get_opponent_stats_summary(player.name)
-                if opponent_stats:
+                if opponent_stats and opponent_stats.strip():  # Only store if we got real data
                     gathered["opponent_stats"] = opponent_stats
+                    player.opponent_stats = opponent_stats
+                    
                     if self.verbose:
-                        self.logger.info(f"{self.name}: Gathered opponent stats")
+                        self.logger.info(f"{self.name}: OPPONENT STATS SUCCESS:")
+                        self.logger.info(f"  Stats: {opponent_stats[:100]}...")
+                else:
+                    if self.verbose:
+                        self.logger.warning(f"{self.name}: Opponent stats returned empty result")
                         
             except Exception as e:
                 if self.verbose:
                     self.logger.error(f"{self.name}: Opponent stats gathering failed: {e}")
     
-        # Outcome predictions via Monte Carlo MCP WITH USAGE TRACKING
+        # Monte Carlo predictions - ONLY if requested and available
         if planning_decision.get("need_outcome_prediction", False) and self.mcp_client and monte_carlo_tracker:
             if monte_carlo_tracker.can_use_monte_carlo(player.name):
-                if self.verbose:
-                    self.logger.info(f"{self.name}: DEBUG - Starting Monte Carlo prediction call")
-    
                 try:
                     hole_cards = [card_to_str(c) for c in player.hole_cards] if player.hole_cards else []
                     board_cards = [card_to_str(c) for c in game_state.board] if game_state.board else []
                     num_players = len(game_state.get_active_players())
-                    self.logger.info(f"  Cards prepared: hole={hole_cards}, board={board_cards}, players={num_players}")
                     
                     if "monte_carlo_simulation" in self.available_capabilities:
-                        self.logger.info(f"{self.name}: DEBUG - Calling Monte Carlo prediction")
                         prediction = await self.mcp_client.predict_outcome_monte_carlo(hole_cards, board_cards, num_players, 2500)
                         
                         # RECORD USAGE AFTER SUCCESSFUL CALL
                         monte_carlo_tracker.record_usage(player.name)
                         
-                        self.logger.info(f"\n\nRaw Monte Carlo result: {prediction}\n\n")
                         if prediction:
-                            gathered["outcome_prediction"] = f"Monte Carlo Prediction (2,500 simulations) - Win: {prediction['win_percentage']}, Tie: {prediction['tie_percentage']}, Loss: {prediction['loss_percentage']} | Samples: {prediction['samples']}"
+                            monte_carlo_text = f"Monte Carlo Prediction (2,500 simulations) - Win: {prediction['win_percentage']}, Tie: {prediction['tie_percentage']}, Loss: {prediction['loss_percentage']} | Samples: {prediction['samples']}"
+                            gathered["outcome_prediction"] = monte_carlo_text
+                            player.monte_carlo_result = monte_carlo_text
+                            
                             if self.verbose:
-                                self.logger.info(f"{self.name}: MONTE CARLO PREDICTION RESULTS:")
+                                self.logger.info(f"{self.name}: MONTE CARLO SUCCESS:")
                                 self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
-                                self.logger.info(f"  Win: {prediction['win_percentage']} | Tie: {prediction['tie_percentage']} | Loss: {prediction['loss_percentage']}")
-                                self.logger.info(f"  Samples: {prediction['samples']} | Method: Monte Carlo (2.5k iterations)")
-                                self.logger.info(f"  Usage after call: {monte_carlo_tracker.get_usage_status(player.name)}")
+                                self.logger.info(f"  Results: {monte_carlo_text}")
                                 
                     elif "quick_win_probability" in self.available_capabilities:
                         win_prob = await self.mcp_client.get_win_probability_fast(hole_cards, board_cards, num_players)
@@ -350,20 +364,19 @@ class LLMAgentMCP:
                         monte_carlo_tracker.record_usage(player.name)
                         
                         if win_prob:
-                            gathered["outcome_prediction"] = f"Quick Win Probability: {win_prob:.1%} (1,000 Monte Carlo simulations)"
+                            win_prob_text = f"Quick Win Probability: {win_prob:.1%} (1,000 Monte Carlo simulations)"
+                            gathered["outcome_prediction"] = win_prob_text
+                            player.monte_carlo_result = win_prob_text
+                            
                             if self.verbose:
-                                self.logger.info(f"{self.name}: QUICK WIN PROBABILITY RESULTS:")
-                                self.logger.info(f"  Cards: {hole_cards} | Board: {board_cards} | Players: {num_players}")
-                                self.logger.info(f"  Win probability: {win_prob:.1%} | Method: Fast Monte Carlo (1k iterations)")
-                                self.logger.info(f"  Usage after call: {monte_carlo_tracker.get_usage_status(player.name)}")
+                                self.logger.info(f"{self.name}: QUICK WIN PROBABILITY SUCCESS: {win_prob_text}")
                     
                 except Exception as e:
                     if self.verbose:
-                        self.logger.error(f"{self.name}: Monte Carlo prediction MCP failed: {e}")
-                        self.logger.error(f"  Failed input: hole={hole_cards}, board={board_cards}, players={num_players}")
+                        self.logger.error(f"{self.name}: Monte Carlo prediction failed: {e}")
             else:
                 if self.verbose:
-                    self.logger.info(f"{self.name}: Monte Carlo prediction skipped - {monte_carlo_tracker.get_usage_status(player.name)}")
+                    self.logger.info(f"{self.name}: Monte Carlo skipped - {monte_carlo_tracker.get_usage_status(player.name)}")
     
         return gathered
 

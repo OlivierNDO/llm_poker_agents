@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+import src.feature_engineering as fe
+
 @dataclass
 class ServerConfig:
     """Configuration for an MCP server"""
@@ -101,7 +103,7 @@ class WindowsCompatibleMCPClient:
         for server_name in list(self.servers.keys()):
             self.stop_server(server_name)
     
-    def _read_with_timeout(self, process, timeout_seconds=15):
+    def _read_with_timeout(self, process, timeout_seconds=120):
         """Read from process stdout with timeout using threading"""
         result = [None]  # Use list to allow modification from inner function
         exception = [None]
@@ -147,7 +149,7 @@ class WindowsCompatibleMCPClient:
             process.stdin.flush()
             
             # Read response with timeout
-            response_line, error = self._read_with_timeout(process, timeout_seconds=15)
+            response_line, error = self._read_with_timeout(process, timeout_seconds=120)
             
             if error == "timeout":
                 print(f"[CLIENT] Timeout waiting for response from {server_name}")

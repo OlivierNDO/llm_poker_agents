@@ -875,7 +875,70 @@
                 max-height: 450px;
             }
         }
-                        
+        
+        
+        /* Utility Analysis Panel */
+        .utility-panel {
+            position: fixed;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 1000;
+        }
+        
+        .utility-box {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 16px;
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            box-shadow: 
+                0 8px 32px rgba(31, 38, 135, 0.37),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            min-height: 120px;
+            max-height: 250px;
+        }
+        
+        .utility-header {
+            font-size: 16px;
+            font-weight: 700;
+            color: #2563eb;
+            margin-bottom: 10px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+        
+        .utility-content {
+            font-size: 13px;
+            color: #1f2937;
+            line-height: 1.4;
+            overflow-y: auto;
+            overflow-x: hidden;
+            max-height: 200px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .utility-content:empty::before {
+            content: 'Waiting...';
+            color: #64748b;
+            font-style: italic;
+        }
+        
+        /* Hide on mobile */
+        @media (max-width: 768px) {
+            .utility-panel {
+                display: none;
+            }
+        }
+                                
                         
         
         
@@ -899,6 +962,30 @@
 
             <div class="players-grid" id="playersGrid">
                 <!-- Player cards will be dynamically added here -->
+            </div>
+        </div>
+        
+        <!-- Utility Analysis Panel -->
+        <div class="utility-panel">
+            <div class="utility-box" id="hand-analysis-box">
+                <div class="utility-header">Hand Analysis</div>
+                <div class="utility-content" id="hand-analysis-content">
+                    Waiting for analysis...
+                </div>
+            </div>
+            
+            <div class="utility-box" id="monte-carlo-box">
+                <div class="utility-header">Monte Carlo</div>
+                <div class="utility-content" id="monte-carlo-content">
+                    Waiting for simulation...
+                </div>
+            </div>
+            
+            <div class="utility-box" id="opponent-stats-box">
+                <div class="utility-header">Opponent Stats</div>
+                <div class="utility-content" id="opponent-stats-content">
+                    Waiting for stats...
+                </div>
             </div>
         </div>
 
@@ -1248,36 +1335,7 @@
         }
 
 
-        
-        function OLD_updateChipStacks(state) {
-          if (!state?.players) return;
-          state.players.forEach((p, idx) => {
-            ensureChipStacksForPlayer(p, idx);
-            const ui = playerChipUI.get(p.name);
-            if (!ui) return;
-        
-            // Convert cash → total chip units across 4 stacks
-            const totalUnits = Math.floor((p.chips || 0) / ui.denom);
-            const perStack = Math.floor(totalUnits / ui.stacks.length);
-            const rem = totalUnits % ui.stacks.length;
-        
-            ui.stacks.forEach((stack, i) => {
-              const units = perStack + (i < rem ? 1 : 0);
-              stack.setChipCount(units, /*animated*/ true);
-            });
-        
-            // Delta pill
-            const prev = ui.prevCash;
-            if (ui.deltaEl && prev !== null && prev !== p.chips) {
-              const delta = p.chips - prev;
-              ui.deltaEl.textContent = `${delta >= 0 ? '+' : ''}$${delta.toLocaleString()}`;
-              ui.deltaEl.classList.toggle('neg', delta < 0);
-              ui.deltaEl.classList.add('show');
-              setTimeout(() => ui.deltaEl.classList.remove('show'), 1200);
-            }
-            ui.prevCash = p.chips;
-          });
-        }
+
         
         
         function updateChipStacks(state) {
@@ -1308,8 +1366,118 @@
             ui.prevCash = p.chips;
           });
         }
-                                
         
+        let lastCurrentPlayer = null;
+
+        function updateUtilityBoxes(gameState) {
+            if (!gameState || !gameState.players) {
+                console.log('No game state or players, clearing utility boxes');
+                clearUtilityBoxes();
+                return;
+            }
+            
+            console.log('=== UTILITY BOX UPDATE DEBUG ===');
+            
+            // Log all players' MCP data for debugging
+            gameState.players.forEach((player, idx) => {
+                console.log(`Player ${idx} (${player.name}):`);
+                console.log(`  handAnalysis: "${player.handAnalysis || 'EMPTY'}"`);
+                console.log(`  monteCarloResult: "${player.monteCarloResult || 'EMPTY'}"`);
+                console.log(`  opponentStats: "${player.opponentStats || 'EMPTY'}"`);
+                console.log(`  isCurrentPlayer: ${player.isCurrentPlayer}`);
+            });
+            
+            // Find the current player (highest priority)
+            const currentPlayer = gameState.players.find(p => p.isCurrentPlayer);
+            let displayPlayer = null;
+            
+            if (currentPlayer) {
+                console.log(`Current player: ${currentPlayer.name}`);
+                
+                // Check if current player has ANY MCP data
+                const hasHandAnalysis = currentPlayer.handAnalysis && currentPlayer.handAnalysis.trim() !== '';
+                const hasMonteCarlo = currentPlayer.monteCarloResult && currentPlayer.monteCarloResult.trim() !== '';
+                const hasOpponentStats = currentPlayer.opponentStats && currentPlayer.opponentStats.trim() !== '';
+                
+                console.log(`Current player MCP data: hand=${hasHandAnalysis}, monte=${hasMonteCarlo}, stats=${hasOpponentStats}`);
+                
+                if (hasHandAnalysis || hasMonteCarlo || hasOpponentStats) {
+                    displayPlayer = currentPlayer;
+                    console.log('Using current player data');
+                } else {
+                    console.log('Current player has no MCP data, looking for recent data...');
+                    
+                    // Look for most recent player with data (not the current player)
+                    for (const player of gameState.players) {
+                        if (player.name !== currentPlayer.name) { // Skip current player
+                            const hasData = (player.handAnalysis && player.handAnalysis.trim() !== '') ||
+                                          (player.monteCarloResult && player.monteCarloResult.trim() !== '') ||
+                                          (player.opponentStats && player.opponentStats.trim() !== '');
+                            
+                            if (hasData) {
+                                displayPlayer = player;
+                                console.log(`Found recent data from: ${player.name}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                console.log('No current player found');
+            }
+            
+            // Update utility boxes
+            const handAnalysisEl = document.getElementById('hand-analysis-content');
+            const monteCarloEl = document.getElementById('monte-carlo-content');
+            const opponentStatsEl = document.getElementById('opponent-stats-content');
+            
+            if (displayPlayer) {
+                console.log(`Displaying data from: ${displayPlayer.name}`);
+                
+                handAnalysisEl.textContent = displayPlayer.handAnalysis || '';
+                monteCarloEl.textContent = displayPlayer.monteCarloResult || '';
+                opponentStatsEl.textContent = displayPlayer.opponentStats || '';
+                
+                console.log('Updated utility boxes successfully');
+            } else {
+                console.log('No player with MCP data found, clearing boxes');
+                handAnalysisEl.textContent = '';
+                monteCarloEl.textContent = '';
+                opponentStatsEl.textContent = '';
+            }
+            
+            console.log('=== END UTILITY BOX UPDATE ===');
+        }
+        
+        function clearUtilityBoxes() {
+            console.log('Clearing all utility boxes');
+            document.getElementById('hand-analysis-content').textContent = '';
+            document.getElementById('monte-carlo-content').textContent = '';
+            document.getElementById('opponent-stats-content').textContent = '';
+        }
+        
+        // Event streaming for utility boxes
+        function startEventStream() {
+            const eventSource = new EventSource('/api/game/events');
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'utility_update') {
+                    updateSingleUtilityBox(data.utility_type, data.content);
+                }
+            };
+        }
+        
+        function updateSingleUtilityBox(type, content) {
+            const element = document.getElementById(`${type.replace('_', '-')}-content`);
+            if (element) {
+                element.textContent = content;
+            }
+        }
+        
+        // Call this when the page loads
+        startEventStream();
+                                                
+                
         // Track previous actions to avoid unnecessary updates
         const playerActionStates = new Map();
         
@@ -1539,6 +1707,8 @@
                     stopBtn.style.display = 'none';
                 }
             }
+            // Update utility boxes
+            updateUtilityBoxes(state);
         }
 
         function showLoading() {
@@ -1710,8 +1880,13 @@
 
         async function startNewHand() {
             clearActionStates();
+            clearUtilityBoxes();
             clearReasoningContent();
             showLoading();
+            
+            // FORCE CLEAR any cached display data
+            lastCurrentPlayer = null;
+            
             addLogEntry("Starting new hand...");
             
             try {
