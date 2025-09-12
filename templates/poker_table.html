@@ -1097,9 +1097,33 @@
                 display: none;
             }
         }
-                                
-                        
         
+        .cards-and-chips-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            position: relative;
+        }
+        
+        .chip-number {
+            position: absolute;
+            left: 59.5px;  /* Half of card width (85px / 2) */
+            font-size: 28px;
+            font-weight: 800;
+            color: #1e40af;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+        
+        .player-cards {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+                                                
+                                        
+                
         
     </style>
 </head>
@@ -1272,7 +1296,10 @@
                     ${dealerIndicator}
                 </div>
         
-                <div class="player-cards">${cardsHtml}</div>
+                <div class="cards-and-chips-row">
+                    <div class="chip-number" ${nameStyle}><span class="chip-count__num">${player.chips}</span></div>
+                    <div class="player-cards">${cardsHtml}</div>
+                </div>
         
                 <div class="action-info-row">
                     <div class="hand-box">${player.hand || ''}</div>
@@ -1294,7 +1321,7 @@
                   Waiting for action...
                 </div>
                 
-                <div class="chip-number"><span class="chip-count__num">${player.chips}</span></div>
+                
             `;
         
             return playerCard;
@@ -1742,20 +1769,24 @@
                 console.log('===================');
             }
             
-            // FORCE UPDATE ALL PLAYER NAME COLORS (temporary fix)
+            // FORCE UPDATE ALL PLAYER NAME AND CHIP COLORS
             if (state.players) {
                 state.players.forEach((player, index) => {
                     const playerCard = document.getElementById(`player-${index}`);
                     if (playerCard && player.color) {
                         const nameEl = playerCard.querySelector('.player-name');
+                        const chipEl = playerCard.querySelector('.chip-number');
                         if (nameEl) {
                             nameEl.style.color = player.color;
-                            console.log(`Applied color ${player.color} to ${player.name}`);
                         }
+                        if (chipEl) {
+                            chipEl.style.color = player.color;
+                        }
+                        console.log(`Applied color ${player.color} to ${player.name} name and chips`);
                     }
                 });
             }
-                    
+                                
             if (!state || state.error) {
                 showError(state?.error || "Failed to load game state");
                 return;
@@ -1828,20 +1859,7 @@
                                 dealerIndicator.remove();
                             }
                             
-                            const cardsContainer = existingCard.querySelector('.player-cards');
-                            if (cardsContainer) {
-                              cardsContainer.innerHTML = '';
-                              if (player.cards && player.cards.length > 0) {
-                                player.cards.forEach(card => {
-                                  const cardElement = createCard(card);
-                                  cardsContainer.appendChild(cardElement);
-                                });
-                              } else {
-                                // optional: show facedown backs if no cards yet
-                                cardsContainer.appendChild(createCard(''));
-                                cardsContainer.appendChild(createCard(''));
-                              }
-                            }
+                            
                             
                             // Update hand strength display if needed
                             const showHandStrength = ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(state.phase);
