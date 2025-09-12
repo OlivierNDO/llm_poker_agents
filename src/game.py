@@ -377,8 +377,10 @@ class StatsTracker:
                 continue
             
             # Format based on sample size
-            if stats.hands_played < 10:
-                lines.append(f"{player_name}: Limited data ({stats.hands_played} hands)")
+            if stats.hands_played == 1:
+                lines.append(f"{player_name}: (1 hand played)")
+            #if stats.hands_played < 10:
+            #    lines.append(f"{player_name}: Limited data ({stats.hands_played} hands)")
             else:
                 lines.append(f"{player_name}: ({stats.hands_played} hands)")
             
