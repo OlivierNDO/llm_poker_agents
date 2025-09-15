@@ -39,7 +39,7 @@ players:
     model: "google/gemini-2.5-flash"
     chips: 200
     use_mcp: true
-    enabled: false
+    enabled: true
     color: '#DB4437'
     
   - name: "DeepSeek: v3"
@@ -60,7 +60,7 @@ players:
     model: "meta-llama/llama-3.3-70b-instruct:free"
     chips: 200
     use_mcp: true
-    enabled: true
+    enabled: false
     color: '#0081FB'
 
   - name: "Llama 3.1 405B"

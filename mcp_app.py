@@ -346,6 +346,8 @@ class PokerGameServer:
             player.opponent_stats = ""  
             player.monte_carlo_result = ""
             player.planning_reasoning = ""
+            # 9/15
+            #player.hand_name = None
             
             # Also remove attributes if they exist to prevent getattr fallbacks
             if hasattr(player, 'hand_analysis'):
@@ -497,6 +499,8 @@ class PokerGameServer:
         hand_players = self.current_hand.players
         
         for i, player in enumerate(hand_players):
+            logger.info(f"DEBUG get_game_state: Player {i} {player.name} hand_name={player.hand_name}")
+            
             # SAFE MCP DATA EXTRACTION - Always return strings, never None
             hand_analysis_data = getattr(player, 'hand_analysis', '') or ''
             opponent_stats_data = getattr(player, 'opponent_stats', '') or ''

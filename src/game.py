@@ -1141,8 +1141,12 @@ class Player:
         if not self.hole_cards or len(self.hole_cards) != 2:
             return None
         try:
+            # DEBUG: Log the actual cards being evaluated
+            hole_str = f"{self.hole_cards[0]} {self.hole_cards[1]}"
+            logger.info(f"DEBUG get_hand_name {self.name}: evaluating cards {hole_str}")
             feature_reporter = FeatureReporter(self.hole_cards, game_state)
             name = feature_reporter.current_hand_string(raw=True)
+            logger.info(f"DEBUG get_hand_name {self.name}: result = {name}")
             return str(name) if name is not None else None
         except Exception:
             self.logger.info('Returning None for hand name')

@@ -1849,6 +1849,19 @@
                             existingCard.classList.toggle('folded', !player.active);
                             existingCard.classList.toggle('active', player.isCurrentPlayer);
                             
+                            // UPDATE THE CARDS DISPLAY 9/15
+                            const cardsContainer = existingCard.querySelector('.player-cards');
+                            if (cardsContainer && player.cards) {
+                                let cardsHtml = '';
+                                player.cards.forEach(card => {
+                                    const cardElement = createCard(card);
+                                    cardsHtml += cardElement.outerHTML;
+                                });
+                                cardsContainer.innerHTML = cardsHtml;
+                            }
+                            
+                            
+                            
                             // Update dealer indicator
                             const dealerIndicator = existingCard.querySelector('.dealer-indicator');
                             const shouldShowDealer = index === state.dealerIndex;
@@ -1862,6 +1875,7 @@
                             
                             
                             // Update hand strength display if needed
+                            
                             const showHandStrength = ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(state.phase);
                             const handBox = existingCard.querySelector('.hand-box');
                             if (showHandStrength && player.hand && !handBox) {
@@ -1874,6 +1888,26 @@
                                     handBox.textContent = ''; // Clear content but keep the box
                                 }
                             }
+                            
+                            
+                            /*
+                            // Update hand strength display if needed
+                            const showHandStrength = ['Flop', 'Turn', 'River', 'Showdown', 'Complete'].includes(state.phase);
+                            const handBox = existingCard.querySelector('.hand-box');
+                            if (handBox) {
+                                if (showHandStrength && player.hand) {
+                                    handBox.textContent = player.hand;
+                                } else {
+                                    handBox.textContent = ''; // Always clear when not showing
+                                }
+                            } else if (showHandStrength && player.hand) {
+                                const actionRow = existingCard.querySelector('.action-info-row');
+                                actionRow.innerHTML += `<div class="hand-box">${player.hand}</div>`;
+                            }
+                            */
+                            
+                            
+                            
                             
                             // Update reasoning
                             const reasoningEl = existingCard.querySelector('.player-reasoning');
