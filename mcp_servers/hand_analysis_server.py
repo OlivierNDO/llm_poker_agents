@@ -185,10 +185,10 @@ class HandAnalysisServer:
                 "description": "Get comprehensive hand analysis including strength, draws, and probabilities",
                 "method": self.get_hand_features
             },
-            "get_hand_strength": {
-                "description": "Get normalized hand strength score (0.0 to 1.0)",
-                "method": self.get_hand_strength
-            },
+            #"get_hand_strength": {
+            #    "description": "Get normalized hand strength score (0.0 to 1.0)",
+            #    "method": self.get_hand_strength
+            #},
             "get_current_hand": {
                 "description": "Get the name of the current best hand",
                 "method": self.get_current_hand

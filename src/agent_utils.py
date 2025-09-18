@@ -339,7 +339,7 @@ class FeatureReporter:
         
         if len(self.card_dict.get('board')) > 0:
             # Hand strength scalar string
-            feature_str_list.append(self.hand_strength_string())
+            #feature_str_list.append(self.hand_strength_string())
 
             # Name of hand
             feature_str_list.append(self.current_hand_string())
